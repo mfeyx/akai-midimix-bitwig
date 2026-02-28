@@ -170,6 +170,44 @@ function getVolume(value) {
 }
 
 /* ------------------------------------------------------ */
+/*                   STARTUP LED ANIMATION                */
+/* ------------------------------------------------------ */
+function ledStartupAnimation() {
+  var STEP = 60; // ms between each channel column
+
+  // Phase 1: sweep ON left-to-right — SOLO first, MUTE half a step later
+  for (var i = 0; i < NUM_FADERS; i++) {
+    (function (i) {
+      host.scheduleTask(function () {
+        midiOut.sendMidi(NOTE_ON, LED_SOLO[i], ON);
+      }, i * STEP);
+      host.scheduleTask(function () {
+        midiOut.sendMidi(NOTE_ON, LED_MUTE[i], ON);
+      }, i * STEP + STEP / 2);
+    })(i);
+  }
+
+  // Phase 2: sweep OFF left-to-right — same cadence
+  var phase2 = NUM_FADERS * STEP + STEP; // start after a short pause
+  for (var i = 0; i < NUM_FADERS; i++) {
+    (function (i) {
+      host.scheduleTask(function () {
+        midiOut.sendMidi(NOTE_ON, LED_SOLO[i], OFF);
+      }, phase2 + i * STEP);
+      host.scheduleTask(function () {
+        midiOut.sendMidi(NOTE_ON, LED_MUTE[i], OFF);
+      }, phase2 + i * STEP + STEP / 2);
+    })(i);
+  }
+
+  // Phase 3: restore actual project state from the cache
+  var phase3 = phase2 + NUM_FADERS * STEP + STEP;
+  host.scheduleTask(function () {
+    getLEDTracks();
+  }, phase3);
+}
+
+/* ------------------------------------------------------ */
 /*                     INIT CONTROLLER                    */
 /* ------------------------------------------------------ */
 function init() {
@@ -240,6 +278,8 @@ function init() {
       });
     })(cix);
   }
+
+  ledStartupAnimation();
 }
 
 function exit() {
