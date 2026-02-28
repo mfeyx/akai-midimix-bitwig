@@ -213,7 +213,7 @@ function init() {
     (function (cix) {
       var page = Math.floor(cix / NUM_FADERS);
       var ledIndex = cix % NUM_FADERS;
-      var channel = trackBank.getChannel(cix);
+      var channel = trackBank.getTrack(cix);
 
       channel.mute().addValueObserver(function (isMuted) {
         var state = isMuted ? ON : OFF;
@@ -328,7 +328,7 @@ function handleButtonPress(cc, type, value) {
       // SOLO, MUTE, ARM
       var index = buttons.indexOf(cc);
       var cix = getChannelIndex(index);
-      var channel = trackBank.getChannel(cix);
+      var channel = trackBank.getTrack(cix);
       channel[type].toggle();
       // LED SETTINGS
       toggleLED(type, index);
@@ -337,8 +337,11 @@ function handleButtonPress(cc, type, value) {
       if (type === SOLO || type === MUTE) {
         var otherType = type === SOLO ? MUTE : SOLO;
         var newState = LED_CACHE[type][CHANNEL_PAGE][index];
-        if (newState === ON && LED_CACHE[otherType][CHANNEL_PAGE][index] === ON) {
-          channel[otherType].toggle();
+        if (
+          newState === ON &&
+          LED_CACHE[otherType][CHANNEL_PAGE][index] === ON
+        ) {
+          trackBank.getTrack(cix)[otherType].toggle();
           setLED(otherType, index, OFF);
         }
       }
@@ -393,7 +396,7 @@ function handleChannelVolume(cc, value) {
     var index = CC_CHANNEL_FADERS.indexOf(cc);
     var page = CHANNEL_PAGE;
     var cix = getChannelIndex(index);
-    var channel = trackBank.getChannel(cix);
+    var channel = trackBank.getTrack(cix);
     let volume = getVolume(value);
     log(`Changing volume of channel ${cix} to ${volume} (page: ${page})`);
     channel.volume().setRaw(volume);
@@ -410,7 +413,7 @@ function handleEncoder(cc, value) {
     var chan_index = CC_SENDS[cc].chan;
     var send_index = CC_SENDS[cc].send;
     var cix = getChannelIndex(chan_index);
-    var channel = trackBank.getChannel(cix);
+    var channel = trackBank.getTrack(cix);
     channel.getSend(send_index).set(value, 128);
     return;
   } catch (error) {
@@ -439,6 +442,13 @@ function onMidi(status, cc, value) {
   switch (true) {
     case isNoteOn(status):
       handleChannelButtonPress(cc, value);
+      break;
+
+    case isNoteOff(status):
+      if (cc == SHIFT) {
+        SHIFT_PRESSED = false
+        log(`SHIFT pressed: ${SHIFT_PRESSED}`);
+      }
       break;
 
     case isChannelController(status):
