@@ -278,6 +278,15 @@ function init() {
     }
   });
 
+  // notify whenever the selected track changes
+  cursorTrack.name().markInterested();
+  cursorTrack.name().addValueObserver(function (name) {
+    if (name) {
+      log("Track: " + name);
+      notify("Track: " + name);
+    }
+  });
+
   // Subscribe to mute, solo, and arm state for every channel so that:
   //   1. LED_CACHE is populated with the real project state on load.
   //   2. Any subsequent change (e.g. another controller, automation) keeps
@@ -392,6 +401,12 @@ function handleChannelButtonPress(cc, value) {
           } else if (cc === CC_ARM[1]) {
             remoteControls.selectNextPage(false);
             log("Device page: next");
+          } else if (cc === CC_ARM[6]) {
+            cursorTrack.selectPrevious();
+            log("Track: previous");
+          } else if (cc === CC_ARM[7]) {
+            cursorTrack.selectNext();
+            log("Track: next");
           }
         }
         break;
