@@ -3,7 +3,7 @@ loadAPI(18);
 host.defineController(
   "Akai",
   "Akai Midimix",
-  "0.1",
+  "1.0",
   "7b8cd61c-2718-4d77-80b5-a2103f92b69c",
   "mfeyx",
 );
@@ -14,11 +14,6 @@ host.defineMidiPorts(1, 1);
 /*                    DEBUGGING FEATURE                   */
 /* ------------------------------------------------------ */
 var DEBUG = true;
-
-function debug(bool = false) {
-  DEBUG = bool;
-  return;
-}
 
 /* ------------------------------------------------------ */
 /*                         LOGGING                        */
@@ -47,16 +42,9 @@ const ON = 127;
 const OFF = 0;
 
 const NOTE_ON = 144; // 0x90
-const NOTE_OFF = 128; // 0x80
-const CC = 0xb0;
-
 /* ------------------------------------------------------ */
 /*                          NAMES                         */
 /* ------------------------------------------------------ */
-const KNOB = "encoder";
-const MAIN = "mainVolume";
-const CHAN = "chanVolume";
-
 // do not change those values,
 // they are called like the api methods, e.g. channel.solo()
 const SOLO = "solo";
@@ -128,12 +116,11 @@ const CC_ARM = [100, 101, 102, 103, 104, 105, 106, 107];
 /* ------------------------- LED ------------------------ */
 const LED_SOLO = [0x01, 0x04, 0x07, 0x0a, 0x0d, 0x10, 0x13, 0x16];
 const LED_MUTE = [0x03, 0x06, 0x09, 0x0c, 0x0f, 0x12, 0x15, 0x18];
-const LED_ARM = [0x03, 0x06, 0x09, 0x0c, 0x0f, 0x12, 0x15, 0x18];
 
 const LED_MAPPING = {
   [SOLO]: LED_SOLO, // row 1
   [MUTE]: LED_MUTE, // row 2
-  [ARM]: LED_ARM, // shift + row 1; arm
+  [ARM]:  LED_MUTE, // same physical LEDs as MUTE; shown when SHIFT is held
 };
 
 const LED_CACHE = {
@@ -149,21 +136,8 @@ const CC_CHANNEL_FADERS = [92, 93, 94, 95, 96, 97, 98, 99];
 /* ------------------------------------------------------ */
 /*                         HELPERS                        */
 /* ------------------------------------------------------ */
-function isCCRangeMapped(name, cc) {
-  var map = CC_BUTTONS[name];
-  return cc >= map.lo && cc <= map.hi;
-}
-
 function toggleValue(value) {
   return value === 0 ? 127 : 0;
-}
-
-function toggle(val) {
-  return val === 127 ? 0 : 127;
-}
-
-function toBool(val) {
-  return val === 127 ? true : false;
 }
 
 function handleError(error) {
@@ -183,10 +157,6 @@ function getVolume(value) {
 function rawToDb(raw) {
   if (raw <= 0) return "-∞ dB";
   return (60 * Math.log10(raw)).toFixed(1) + " dB";
-}
-
-function send(cc) {
-  midiOut.sendMidi(NOTE_ON, cc, ON);
 }
 
 /* ------------------------------------------------------ */
@@ -414,8 +384,6 @@ function handleChannelButtonPress(cc, value) {
       default:
         break;
     }
-
-    return;
   } catch (error) {
     handleError(error);
   }
@@ -463,11 +431,7 @@ function handleButtonPress(cc, type, value) {
           setLED(otherType, index, OFF);
         }
       }
-
-      return;
     }
-
-    return;
   } catch (error) {
     handleError(error);
   }
@@ -508,23 +472,20 @@ function getLEDTracks() {
 /* --------------------- MAIN FADER --------------------- */
 function handleMainVolume(cc, value) {
   log(`Main Fader -> ${cc} : ${value}`);
-  let volume = getVolume(value);
+  const volume = getVolume(value);
   mainFader.volume().setRaw(volume);
-  notify(`Master Volume: ${rawToDb(getVolume(value))}`);
+  notify(`Master Volume: ${rawToDb(volume)}`);
 }
 
 /* -------------------- CHANNEL FADER ------------------- */
 function handleChannelVolume(cc, value) {
   try {
-    var index = CC_CHANNEL_FADERS.indexOf(cc);
-    var page = CHANNEL_PAGE;
-    var cix = getChannelIndex(index);
-    var channel = trackBank.getTrack(cix);
-    let volume = getVolume(value);
-    log(`Changing volume of channel ${cix} to ${volume} (page: ${page})`);
-    channel.volume().setRaw(volume);
-    notify(`Ch ${cix + 1} Volume: ${rawToDb(getVolume(value))}`);
-    return;
+    const index = CC_CHANNEL_FADERS.indexOf(cc);
+    const cix = getChannelIndex(index);
+    const volume = getVolume(value);
+    log(`Changing volume of channel ${cix} to ${volume}`);
+    trackBank.getTrack(cix).volume().setRaw(volume);
+    notify(`Ch ${cix + 1} Volume: ${rawToDb(volume)}`);
   } catch (error) {
     handleError(error);
   }
@@ -540,7 +501,6 @@ function handleEncoder(cc, value) {
     var channel = trackBank.getTrack(cix);
     channel.getSend(send_index).set(value, 128);
     notify(`Ch ${cix + 1} Send ${send_index + 1}: ${Math.round(value / 127 * 100)}%`);
-    return;
   } catch (error) {
     handleError(error);
   }
@@ -556,7 +516,6 @@ function handleDeviceEncoder(cc, value) {
     var paramName = param.name().get() || `Param ${index + 1}`;
     var paramValue = param.displayedValue().get();
     notify(`${paramName}: ${paramValue}`);
-    return;
   } catch (error) {
     handleError(error);
   }
