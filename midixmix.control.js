@@ -30,6 +30,17 @@ function log(msg) {
 }
 
 /* ------------------------------------------------------ */
+/*                     NOTIFICATIONS                      */
+/* ------------------------------------------------------ */
+var NOTIFICATIONS = true;
+
+function notify(msg) {
+  if (NOTIFICATIONS) {
+    host.showPopupNotification(msg);
+  }
+}
+
+/* ------------------------------------------------------ */
 /*                       MIDI SPECS                       */
 /* ------------------------------------------------------ */
 const ON = 127;
@@ -169,6 +180,11 @@ function getVolume(value) {
   return Math.min(0.795, value / 127); // 0.795 = -6db
 }
 
+function rawToDb(raw) {
+  if (raw <= 0) return "-∞ dB";
+  return (60 * Math.log10(raw)).toFixed(1) + " dB";
+}
+
 function send(cc) {
   midiOut.sendMidi(NOTE_ON, cc, ON);
 }
@@ -239,12 +255,16 @@ function init() {
   for (var i = 0; i < 8; i++) {
     remoteControls.getParameter(i).markInterested();
     remoteControls.getParameter(i).setIndication(true);
+    remoteControls.getParameter(i).name().markInterested();
+    remoteControls.getParameter(i).displayedValue().markInterested();
   }
 
   // log page name changes
   remoteControls.selectedPageIndex().addValueObserver(function (index) {
     var names = remoteControls.pageNames().get();
-    log("Remote controls page: " + index + " (" + (names[index] || "?") + ")");
+    var name = names[index] || "?";
+    log("Remote controls page: " + index + " (" + name + ")");
+    notify("Device Page: " + name);
   });
 
   // Subscribe to mute, solo, and arm state for every channel so that:
@@ -304,9 +324,11 @@ function handleChannelButtonPress(cc, value) {
         if (SHIFT_PRESSED) {
           cursorDevice.selectPrevious();
           log("SHIFT+BANK LEFT: previous device");
+          notify("Device ←");
         } else {
           CHANNEL_PAGE = Math.max(MIN_PAGE, CHANNEL_PAGE - 1);
           log(`BANK LEFT, Page: ${CHANNEL_PAGE}`);
+          notify(`Channel Page ← ${CHANNEL_PAGE + 1}`);
           getLEDTracks();
         }
         break;
@@ -316,9 +338,11 @@ function handleChannelButtonPress(cc, value) {
         if (SHIFT_PRESSED) {
           cursorDevice.selectNext();
           log("SHIFT+BANK RIGHT: next device");
+          notify("Device →");
         } else {
           CHANNEL_PAGE = Math.min(MAX_PAGE, CHANNEL_PAGE + 1);
           log(`BANK RIGHT, Page: ${CHANNEL_PAGE}`);
+          notify(`Channel Page → ${CHANNEL_PAGE + 1}`);
           getLEDTracks();
         }
         break;
@@ -462,6 +486,7 @@ function handleMainVolume(cc, value) {
   log(`Main Fader -> ${cc} : ${value}`);
   let volume = getVolume(value);
   mainFader.volume().setRaw(volume);
+  notify(`Master Volume: ${rawToDb(getVolume(value))}`);
 }
 
 /* -------------------- CHANNEL FADER ------------------- */
@@ -474,6 +499,7 @@ function handleChannelVolume(cc, value) {
     let volume = getVolume(value);
     log(`Changing volume of channel ${cix} to ${volume} (page: ${page})`);
     channel.volume().setRaw(volume);
+    notify(`Ch ${cix + 1} Volume: ${rawToDb(getVolume(value))}`);
     return;
   } catch (error) {
     handleError(error);
@@ -489,6 +515,7 @@ function handleEncoder(cc, value) {
     var cix = getChannelIndex(chan_index);
     var channel = trackBank.getTrack(cix);
     channel.getSend(send_index).set(value, 128);
+    notify(`Ch ${cix + 1} Send ${send_index + 1}: ${Math.round(value / 127 * 100)}%`);
     return;
   } catch (error) {
     handleError(error);
@@ -500,7 +527,11 @@ function handleDeviceEncoder(cc, value) {
   try {
     log(`handleDeviceEncoder -> ${cc} : ${value}`);
     var index = CC_ENCODERS[cc].chan; // 0-7, maps to parameter slot
-    remoteControls.getParameter(index).set(value / 127.0);
+    var param = remoteControls.getParameter(index);
+    param.set(value / 127.0);
+    var paramName = param.name().get() || `Param ${index + 1}`;
+    var paramValue = param.displayedValue().get();
+    notify(`${paramName}: ${paramValue}`);
     return;
   } catch (error) {
     handleError(error);
