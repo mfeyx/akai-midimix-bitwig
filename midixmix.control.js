@@ -169,6 +169,10 @@ function getVolume(value) {
   return Math.min(0.795, value / 127); // 0.795 = -6db
 }
 
+function send(cc) {
+  midiOut.sendMidi(NOTE_ON, cc, ON);
+}
+
 /* ------------------------------------------------------ */
 /*                   STARTUP LED ANIMATION                */
 /* ------------------------------------------------------ */
@@ -296,6 +300,7 @@ function handleChannelButtonPress(cc, value) {
     // log(`handleChannelButtonPress -> ${status} CH ${cc} : ${value}`);
     switch (true) {
       case cc === BANKL:
+        midiOut.sendMidi(NOTE_ON, BANKL, ON);
         if (SHIFT_PRESSED) {
           cursorDevice.selectPrevious();
           log("SHIFT+BANK LEFT: previous device");
@@ -307,6 +312,7 @@ function handleChannelButtonPress(cc, value) {
         break;
 
       case cc === BANKR:
+        midiOut.sendMidi(NOTE_ON, BANKR, ON);
         if (SHIFT_PRESSED) {
           cursorDevice.selectNext();
           log("SHIFT+BANK RIGHT: next device");
@@ -520,6 +526,10 @@ function onMidi(status, cc, value) {
         for (let i = 0; i < NUM_FADERS; i++) {
           getLED(MUTE, i);
         }
+      } else if (cc === BANKL) {
+        midiOut.sendMidi(NOTE_ON, BANKL, OFF);
+      } else if (cc === BANKR) {
+        midiOut.sendMidi(NOTE_ON, BANKR, OFF);
       }
       break;
 
