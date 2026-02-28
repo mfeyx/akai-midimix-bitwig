@@ -143,4 +143,4 @@ Bitwig shows a small popup notification when you interact with the controller:
 
 ## License
 
-MIT
+GNU GENERAL PUBLIC LICENSE
