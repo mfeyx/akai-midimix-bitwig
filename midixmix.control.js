@@ -1,319 +1,377 @@
-loadAPI(18)
+loadAPI(18);
 
-host.defineController("Akai", "Akai Midimix", "0.1", "7b8cd61c-2718-4d77-80b5-a2103f92b69c", "mfeyx")
-host.addDeviceNameBasedDiscoveryPair(["MIDI Mix"], ["MIDI Mix"])
-host.defineMidiPorts(1, 1)
+host.defineController(
+  "Akai",
+  "Akai Midimix",
+  "0.1",
+  "7b8cd61c-2718-4d77-80b5-a2103f92b69c",
+  "mfeyx",
+);
+host.addDeviceNameBasedDiscoveryPair(["MIDI Mix"], ["MIDI Mix"]);
+host.defineMidiPorts(1, 1);
 
 /* ------------------------------------------------------ */
 /*                    DEBUGGING FEATURE                   */
 /* ------------------------------------------------------ */
-var DEBUG = false
+var DEBUG = true;
 
 function debug(bool = false) {
-   DEBUG = bool
-   return
+  DEBUG = bool;
+  return;
 }
 
 /* ------------------------------------------------------ */
 /*                         LOGGING                        */
 /* ------------------------------------------------------ */
 function log(msg) {
-   if (DEBUG) { println(msg) }
+  if (DEBUG) {
+    println(msg);
+  }
 }
 
 /* ------------------------------------------------------ */
 /*                       MIDI SPECS                       */
 /* ------------------------------------------------------ */
-const ON = 127
-const OFF = 0
+const ON = 127;
+const OFF = 0;
 
-const NOTE_ON = 0x90
-const NOTE_OFF = 0x80
-const CC = 0xb0
-
+const NOTE_ON = 144; // 0x90
+const NOTE_OFF = 128; // 0x80
+const CC = 0xb0;
 
 /* ------------------------------------------------------ */
 /*                          NAMES                         */
 /* ------------------------------------------------------ */
-const KNOB = "encoder"
-const MAIN = "mainVolume"
-const CHAN = "chanVolume"
+const KNOB = "encoder";
+const MAIN = "mainVolume";
+const CHAN = "chanVolume";
 
 // do not change those values,
 // they are called like the api methods, e.g. channel.solo()
-const SOLO = "solo"
-const MUTE = "mute"
-const RECO = "arm"
-
+const SOLO = "solo";
+const MUTE = "mute";
+const RECO = "arm";
 
 /* ------------------------------------------------------ */
 /*                         CONSTS                         */
 /* ------------------------------------------------------ */
-var SHIFT_PRESSED = false
+const MIN_PAGE = 0;
+const MAX_PAGE = 20;
+const NUM_FADERS = 8;
+const TRACKS = MAX_PAGE * NUM_FADERS;
+
+/* ------------------------------------------------------ */
+/*                         RUNNERS                        */
+/* ------------------------------------------------------ */
+var SHIFT_PRESSED = false;
+let CHANNEL_PAGE = 0;
 
 /* ------------------------------------------------------ */
 /*                        HARDWARE                        */
 /* ------------------------------------------------------ */
 
 /* ----------------- BUTTONS RIGHT PANEL ---------------- */
-const BANKL = 0x19  // 25
-const BANKR = 0x1A  // 26
-const SHIFT = 0x1B  // 27
+const BANKL = 25; // 0x19
+const BANKR = 26; // 0x1a
+const SHIFT = 27; // 0x1b
 
 /* ----------------------- ENCODER ---------------------- */
-const KNOBS = {
-   "30": { send: 0, chan: 0 },
-   "31": { send: 0, chan: 1 },
-   "32": { send: 0, chan: 2 },
-   "33": { send: 0, chan: 3 },
-   "34": { send: 0, chan: 4 },
-   "35": { send: 0, chan: 5 },
-   "36": { send: 0, chan: 6 },
-   "37": { send: 0, chan: 7 },
-   "38": { send: 1, chan: 0 },
-   "39": { send: 1, chan: 1 },
-   "40": { send: 1, chan: 2 },
-   "41": { send: 1, chan: 3 },
-   "42": { send: 1, chan: 4 },
-   "43": { send: 1, chan: 5 },
-   "44": { send: 1, chan: 6 },
-   "45": { send: 1, chan: 7 },
-   "46": { send: 2, chan: 0 },
-   "47": { send: 2, chan: 1 },
-   "48": { send: 2, chan: 2 },
-   "49": { send: 2, chan: 3 },
-   "50": { send: 2, chan: 4 },
-   "51": { send: 2, chan: 5 },
-   "52": { send: 2, chan: 6 },
-   "53": { send: 2, chan: 7 }
-}
+const CC_SENDS = {
+  25: {chan: 0, send: 0},
+  26: {chan: 0, send: 1},
+  28: {chan: 1, send: 0},
+  29: {chan: 1, send: 1},
+  31: {chan: 2, send: 0},
+  32: {chan: 2, send: 1},
+  34: {chan: 3, send: 0},
+  35: {chan: 3, send: 1},
+  46: {chan: 4, send: 0},
+  47: {chan: 4, send: 1},
+  50: {chan: 5, send: 0},
+  51: {chan: 5, send: 1},
+  54: {chan: 6, send: 0},
+  55: {chan: 6, send: 1},
+  58: {chan: 7, send: 0},
+  59: {chan: 7, send: 1},
+};
+const CC_SEND_ENCODERS = Object.keys(CC_SENDS).map(Number);
 
-/* ----------------- CHANNEL CONTROLLER ----------------- */
-const CC_MAPPING = {
-   [KNOB]: {
-      lo: 30,
-      hi: 53,
-   },
-   [SOLO]: {
-      lo: 12,
-      hi: 19
-   },
-   [MUTE]: {
-      lo: 2,
-      hi: 9,
-   },
-   [RECO]: {
-      lo: 20,
-      hi: 27,
-   },
-   [CHAN]: {
-      lo: 92,
-      hi: 99
-   },
-   [MAIN]: 54
-}
+// third row
+const CC_ENCODERS = {
+  27: {chan: 0, send: 2},
+  30: {chan: 1, send: 2},
+  33: {chan: 2, send: 2},
+  36: {chan: 3, send: 2},
+  48: {chan: 4, send: 2},
+  52: {chan: 5, send: 2},
+  56: {chan: 6, send: 2},
+  60: {chan: 7, send: 2},
+};
+const CC_DEVICE_ENCODERS = Object.keys(CC_ENCODERS).map(Number);
+
+/* ----------------------- BUTTONS ---------------------- */
+const CC_SOLO = [16, 17, 18, 19, 20, 21, 22, 23];
+const CC_RECO = [100, 101, 102, 103, 104, 105, 106, 107];
+const CC_MUTE = [0, 1, 2, 3, 4, 5, 6, 7];
 
 /* ------------------------- LED ------------------------ */
-const LED_SOLO = [0x01, 0x04, 0x07, 0x0A, 0x0D, 0x10, 0x13, 0x16]
-const LED_MUTE = [0x03, 0x06, 0x09, 0x0C, 0x0F, 0x12, 0x15, 0x18]
-const LED_RECO = [0x64, 0x65, 0x66, 0x67, 0x68, 0x69, 0x6A, 0x6B]  // ! NOT WORKING ATM
+const LED_SOLO = [0x01, 0x04, 0x07, 0x0a, 0x0d, 0x10, 0x13, 0x16];
+const LED_MUTE = [0x03, 0x06, 0x09, 0x0c, 0x0f, 0x12, 0x15, 0x18];
+const LED_RECO = [0x64, 0x65, 0x66, 0x67, 0x68, 0x69, 0x6a, 0x6b]; // ! NOT WORKING ATM
 
 const LED_MAPPING = {
-   [SOLO]: LED_SOLO, // row 1
-   [RECO]: LED_RECO, // shift + row 1
-   [MUTE]: LED_MUTE, // row 2
-}
+  [SOLO]: LED_SOLO, // row 1
+  [MUTE]: LED_MUTE, // row 2
+  [RECO]: LED_RECO, // shift + row 1; arm
+};
 
+// TODO: LED CACHE MUSS Einträge mal Fader haben,
+// sodass jeder Kanal seine LED bekommt
+// nicht nur die ersten 8
 const LED_CACHE = {
-   [SOLO]: [0, 0, 0, 0, 0, 0, 0, 0],
-   [MUTE]: [0, 0, 0, 0, 0, 0, 0, 0],
-   [RECO]: [0, 0, 0, 0, 0, 0, 0, 0],
-}
+  [SOLO]: Array.from({length: MAX_PAGE}, () => new Array(NUM_FADERS).fill(0)),
+  [MUTE]: Array.from({length: MAX_PAGE}, () => new Array(NUM_FADERS).fill(0)),
+  [RECO]: Array.from({length: MAX_PAGE}, () => new Array(NUM_FADERS).fill(0)),
+};
+
+/* ----------------------- FADERS ----------------------- */
+const CC_MAIN_FADER = 91;
+const CC_CHANNEL_FADERS = [92, 93, 94, 95, 96, 97, 98, 99];
 
 /* ------------------------------------------------------ */
 /*                         HELPERS                        */
 /* ------------------------------------------------------ */
 function isCCRangeMapped(name, cc) {
-   var map = CC_MAPPING[name]
-   return (cc >= map.lo && cc <= map.hi)
+  var map = CC_BUTTONS[name];
+  return cc >= map.lo && cc <= map.hi;
 }
 
 function toggleValue(value) {
-   return value === 0 ? 127 : 0
+  return value === 0 ? 127 : 0;
 }
 
 function toggle(val) {
-   return val === 127 ? 0 : 127
+  return val === 127 ? 0 : 127;
 }
 
 function toBool(val) {
-   return val === 127 ? true : false
+  return val === 127 ? true : false;
 }
 
 function handleError(error) {
-   println(`${error.name}: ${error.message}`)
-   return
+  println(`${error.name}: ${error.message}`);
+  return;
 }
 
+function getChannelIndex(index) {
+  var page = CHANNEL_PAGE;
+  return index + page * NUM_FADERS;
+}
+
+function getVolume(value) {
+  return Math.min(0.795, value / 127); // 0.795 = -6db
+}
 
 /* ------------------------------------------------------ */
 /*                     INIT CONTROLLER                    */
 /* ------------------------------------------------------ */
 function init() {
-   // sending to host (bitwig)
-   midiIn = host.getMidiInPort(0)
-   midiIn.setMidiCallback(onMidi)
+  // sending to host (bitwig)
+  midiIn = host.getMidiInPort(0);
+  midiIn.setMidiCallback(onMidi);
 
-   // sending to controller (midimix) -> LED
-   midiOut = host.getMidiOutPort(0)
+  // sending to controller (midimix) -> LED
+  midiOut = host.getMidiOutPort(0);
 
-   // 8 channel faders, 3 sends, 0 scenes
-   trackBank = host.createMainTrackBank(8, 3, 0)
+  // 8 channel faders, 3 sends, 0 scenes
+  trackBank = host.createMainTrackBank(TRACKS, 2, 0);
 
-   // main fader
-   mainFader = host.createMasterTrack(0)
+  // main fader
+  mainFader = host.createMasterTrack(0);
 }
 
 function exit() {
-   log("exit()")
+  log("exit()");
 }
 
 /* ------------------------------------------------------ */
 /*                   MIDI STATUS HANDLER                  */
 /* ------------------------------------------------------ */
 
-/* ----------------------- NOTE ON ---------------------- */
-function handleNoteOn(cc, value) {
-   try {
-      log(`handleNoteOn -> ${cc} : ${value}`)
-      switch (cc) {
-         case BANKL:
-            log("BANK LEFT ON")
-            break;
-         case BANKR:
-            log("BANK RIGHT ON")
-            break;
-         case SHIFT:
-            SHIFT_PRESSED = !SHIFT_PRESSED && cc == SHIFT
-            log(`SHIFT pressed: ${SHIFT_PRESSED}`)
-            break;
-         default:
-            break;
-      }
-      return
-   } catch (error) {
-      handleError(error)
-   }
+
+/* ----------------------- BUTTONS ---------------------- */
+function handleChannelButtonPress(cc, value) {
+  try {
+    // log(`handleChannelButtonPress -> ${status} CH ${cc} : ${value}`);
+    switch (true) {
+      case cc === BANKL:
+        CHANNEL_PAGE = Math.max(MIN_PAGE, CHANNEL_PAGE - 1);
+        log(`BANK LEFT, Page: ${CHANNEL_PAGE}`);
+        getLEDTracks();
+        break;
+
+      case cc === BANKR:
+        CHANNEL_PAGE = Math.min(MAX_PAGE, CHANNEL_PAGE + 1);
+        log(`BANK RIGHT, Page: ${CHANNEL_PAGE}`);
+        getLEDTracks();
+        break;
+
+      case cc === SHIFT:
+        SHIFT_PRESSED = !SHIFT_PRESSED && cc == SHIFT;
+        log(`SHIFT pressed: ${SHIFT_PRESSED}`);
+        break;
+
+      case CC_SOLO.includes(cc):
+        log("SOLO pressed");
+        handleButtonPress(cc, SOLO, value);
+        break;
+
+      case CC_MUTE.includes(cc):
+        log("MUTE pressed");
+        handleButtonPress(cc, MUTE, value);
+        break;
+
+      case CC_RECO.includes(cc):
+        handleButtonPress(cc, RECO, value);
+        log("ARM pressed");
+        break;
+
+      default:
+        break;
+    }
+
+    return;
+  } catch (error) {
+    handleError(error);
+  }
 }
 
-/* ---------------------- NOTE OFF ---------------------- */
-function handleNoteOff(cc, value) {
-   try {
-      log(`handleNoteOff -> ${cc} : ${value}`)
-      switch (cc) {
-         case BANKL:
-            log("BANK LEFT OFF")
-            break;
-         case BANKR:
-            log("BANK RIGHT OFF")
-            break;
-         case SHIFT:
-            SHIFT_PRESSED = !SHIFT_PRESSED && cc == SHIFT
-            log(`SHIFT pressed: ${SHIFT_PRESSED}`)
-            break;
-         default:
-            break;
-      }
-      return
-   } catch (error) {
-      handleError(error)
-   }
+/* ----------------------- BUTTONS ---------------------- */
+function handleButtonPress(cc, type, value) {
+  // select the button type
+  let buttons;
+  switch (type) {
+    case SOLO:
+      buttons = CC_SOLO;
+      break;
+    case MUTE:
+      buttons = CC_MUTE;
+      break;
+    case RECO:
+      buttons = CC_RECO;
+      break;
+  }
+
+  try {
+    if (value === ON) {
+      // SOLO, MUTE, ARM
+      var index = buttons.indexOf(cc);
+      var cix = getChannelIndex(index);
+      var channel = trackBank.getChannel(cix);
+      channel[type].toggle();
+      // LED SETTINGS
+      updateLED(type, index);
+      return;
+    }
+
+    return;
+  } catch (error) {
+    handleError(error);
+  }
 }
+
+function updateLED(type, index) {
+  var led = LED_MAPPING[type][index];
+  var value = toggleValue(LED_CACHE[type][CHANNEL_PAGE][index]);
+  LED_CACHE[type][CHANNEL_PAGE][index] = value;
+  midiOut.sendMidi(NOTE_ON, led, value);
+}
+
+function getLED(type, index) {
+  var led = LED_MAPPING[type][index];
+  var value = LED_CACHE[type][CHANNEL_PAGE][index];
+  midiOut.sendMidi(NOTE_ON, led, value);
+}
+
+function getLEDTracks() {
+  log(`Updating LEDs on PAGE ${CHANNEL_PAGE}`);
+  for (let i = 0; i < NUM_FADERS; i++) {
+    getLED(SOLO, i);
+    getLED(MUTE, i);
+    getLED(RECO, i);
+  }
+}
+
 
 /* --------------------- MAIN FADER --------------------- */
 function handleMainVolume(cc, value) {
-   log(`Main Fader -> ${cc} : ${value}`)
-   mainFader.getVolume().setRaw(value / 127)
+  log(`Main Fader -> ${cc} : ${value}`);
+  let volume = getVolume(value);
+  mainFader.getVolume().setRaw(volume);
 }
 
 /* -------------------- CHANNEL FADER ------------------- */
 function handleChannelVolume(cc, value) {
-   try {
-      var index = cc - CC_MAPPING[CHAN].lo
-      var channel = trackBank.getChannel(index)
-      var volume = (value / 127) //* 0.8
-      channel.getVolume().setRaw(volume)
-      log(`Changing volume of channel ${index + 1} to ${value}`)
-      return
-   } catch (error) {
-      handleError(error)
-   }
-}
-
-/* ----------------------- BUTTONS ---------------------- */
-function handleButton(cc, type, value) {
-   try {
-      if (value === ON) {
-         var index = cc - CC_MAPPING[type].lo
-         var channel = trackBank.getChannel(index)
-         var value = toggleValue(LED_CACHE[type][index])
-         channel[type]().set(toBool(value))
-         var led = LED_MAPPING[type][index]
-         LED_CACHE[type][index] = value
-         midiOut.sendMidi(NOTE_ON, led, value)
-         log(`handleButton -> CH${index + 1} : ${type}`)
-         return
-      }
-      return
-   } catch (error) {
-      handleError(error)
-   }
+  try {
+    var index = CC_CHANNEL_FADERS.indexOf(cc);
+    var page = CHANNEL_PAGE;
+    var cix = getChannelIndex(index);
+    var channel = trackBank.getChannel(cix);
+    let volume = getVolume(value);
+    log(`Changing volume of channel ${cix} to ${volume} (page: ${page})`);
+    channel.getVolume().setRaw(volume);
+    return;
+  } catch (error) {
+    handleError(error);
+  }
 }
 
 /* ---------------------- ENCODERS ---------------------- */
 function handleEncoder(cc, value) {
-   try {
-      log(`handleEncoder -> ${cc} : ${value}`)
-      var chan_index = KNOBS[cc].chan
-      var send_index = KNOBS[cc].send
-      var channel = trackBank.getChannel(chan_index)
-      channel.getSend(send_index).set(value, 128)
-      return
-   } catch (error) {
-      handleError(error)
-   }
+  try {
+    log(`handleEncoder -> ${cc} : ${value}`);
+    var chan_index = CC_SENDS[cc].chan;
+    var send_index = CC_SENDS[cc].send;
+    var cix = getChannelIndex(chan_index);
+    var channel = trackBank.getChannel(cix);
+    channel.getSend(send_index).set(value, 128);
+    return;
+  } catch (error) {
+    handleError(error);
+  }
 }
 
 /* ------------------------------------------------------ */
 /*                   MIDI INPUT HANDLER                   */
 /* ------------------------------------------------------ */
 function onMidi(status, cc, value) {
+  // log(`status: ${status}, cc: ${cc}, value: ${value}`);
 
-   switch (true) {
-      case isNoteOn(status): handleNoteOn(cc, value); break;
-      case isNoteOff(status): handleNoteOff(cc, value); break;
+  switch (true) {
+    case isNoteOn(status):
+      handleChannelButtonPress(cc, value);
+      break;
 
-      case isChannelController(status):
-         // main volume
-         if (cc === CC_MAPPING[MAIN]) { handleMainVolume(cc, value); break; }
+    case isChannelController(status):
+      if (cc === CC_MAIN_FADER) {
+        handleMainVolume(cc, value);
+        break;
+      }
 
-         // channel volume
-         if (isCCRangeMapped(CHAN, cc)) { handleChannelVolume(cc, value); break; }
+      if (CC_CHANNEL_FADERS.includes(cc)) {
+        handleChannelVolume(cc, value);
+        break;
+      }
 
-         // buttons
-         if (isCCRangeMapped(SOLO, cc)) { handleButton(cc, SOLO, value); break; }
-         if (isCCRangeMapped(MUTE, cc)) { handleButton(cc, MUTE, value); break; }
-         if (isCCRangeMapped(RECO, cc)) { handleButton(cc, RECO, value); break; }
+      if (CC_SEND_ENCODERS.includes(cc)) {
+        handleEncoder(cc, value);
+        break;
+      }
 
-         // encoders
-         if (isCCRangeMapped(KNOB, cc)) { handleEncoder(cc, value); break; }
+      break;
 
-         // end
-         break;
-
-      default:
-         prinltn(`UNKNOWN STATUS: ${status}, cc: ${cc}, value: ${value}`)
-         break;
-   }
-   return
+    default:
+      break;
+  }
+  return;
 }
