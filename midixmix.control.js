@@ -111,13 +111,13 @@ const CC_DEVICE_ENCODERS = Object.keys(CC_ENCODERS).map(Number);
 
 /* ----------------------- BUTTONS ---------------------- */
 const CC_SOLO = [16, 17, 18, 19, 20, 21, 22, 23];
-const CC_ARM = [100, 101, 102, 103, 104, 105, 106, 107];
 const CC_MUTE = [0, 1, 2, 3, 4, 5, 6, 7];
+const CC_ARM = [100, 101, 102, 103, 104, 105, 106, 107];
 
 /* ------------------------- LED ------------------------ */
 const LED_SOLO = [0x01, 0x04, 0x07, 0x0a, 0x0d, 0x10, 0x13, 0x16];
 const LED_MUTE = [0x03, 0x06, 0x09, 0x0c, 0x0f, 0x12, 0x15, 0x18];
-const LED_ARM = [0x64, 0x65, 0x66, 0x67, 0x68, 0x69, 0x6a, 0x6b]; // ! NOT WORKING ATM
+const LED_ARM = [0x03, 0x06, 0x09, 0x0c, 0x0f, 0x12, 0x15, 0x18];
 
 const LED_MAPPING = {
   [SOLO]: LED_SOLO, // row 1
@@ -256,7 +256,7 @@ function init() {
       channel.mute().addValueObserver(function (isMuted) {
         var state = isMuted ? ON : OFF;
         LED_CACHE[MUTE][page][ledIndex] = state;
-        if (page === CHANNEL_PAGE) {
+        if (page === CHANNEL_PAGE && !SHIFT_PRESSED) {
           midiOut.sendMidi(NOTE_ON, LED_MAPPING[MUTE][ledIndex], state);
         }
       });
@@ -272,7 +272,7 @@ function init() {
       channel.arm().addValueObserver(function (isArmed) {
         var state = isArmed ? ON : OFF;
         LED_CACHE[ARM][page][ledIndex] = state;
-        if (page === CHANNEL_PAGE) {
+        if (page === CHANNEL_PAGE && SHIFT_PRESSED) {
           midiOut.sendMidi(NOTE_ON, LED_MAPPING[ARM][ledIndex], state);
         }
       });
@@ -318,8 +318,12 @@ function handleChannelButtonPress(cc, value) {
         break;
 
       case cc === SHIFT:
-        SHIFT_PRESSED = cc == SHIFT;
+        SHIFT_PRESSED = true;
         log(`SHIFT pressed: ${SHIFT_PRESSED}`);
+        // Switch MUTE-row LEDs to show ARM state
+        for (let i = 0; i < NUM_FADERS; i++) {
+          getLED(ARM, i);
+        }
         break;
 
       case CC_SOLO.includes(cc):
@@ -328,8 +332,14 @@ function handleChannelButtonPress(cc, value) {
         break;
 
       case CC_MUTE.includes(cc):
-        log("MUTE pressed");
-        handleButtonPress(cc, MUTE, value);
+        if (SHIFT_PRESSED) {
+          log("SHIFT+MUTE -> ARM pressed");
+          var muteIndex = CC_MUTE.indexOf(cc);
+          handleButtonPress(CC_ARM[muteIndex], ARM, value);
+        } else {
+          log("MUTE pressed");
+          handleButtonPress(cc, MUTE, value);
+        }
         break;
 
       case CC_ARM.includes(cc):
@@ -370,8 +380,12 @@ function handleButtonPress(cc, type, value) {
       var cix = getChannelIndex(index);
       var channel = trackBank.getTrack(cix);
       channel[type].toggle();
-      // LED SETTINGS
-      toggleLED(type, index);
+      // LED SETTINGS — ARM LED is driven solely by the value observer,
+      // so we only optimistically toggle for SOLO and MUTE. This prevents
+      // the ARM LED from flipping when the track cannot actually be armed.
+      if (type !== ARM) {
+        toggleLED(type, index);
+      }
 
       // Solo and mute are exclusive: turning one ON turns the other OFF
       if (type === SOLO || type === MUTE) {
@@ -418,8 +432,12 @@ function getLEDTracks() {
   log(`Updating LEDs on PAGE ${CHANNEL_PAGE}`);
   for (let i = 0; i < NUM_FADERS; i++) {
     getLED(SOLO, i);
-    getLED(MUTE, i);
-    getLED(ARM, i);
+    // MUTE and ARM share the same physical LEDs — show whichever is active
+    if (SHIFT_PRESSED) {
+      getLED(ARM, i);
+    } else {
+      getLED(MUTE, i);
+    }
   }
 }
 
@@ -488,6 +506,10 @@ function onMidi(status, cc, value) {
       if (cc == SHIFT) {
         SHIFT_PRESSED = false;
         log(`SHIFT pressed: ${SHIFT_PRESSED}`);
+        // Switch MUTE-row LEDs back to MUTE state
+        for (let i = 0; i < NUM_FADERS; i++) {
+          getLED(MUTE, i);
+        }
       }
       break;
 
