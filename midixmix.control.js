@@ -50,7 +50,7 @@ const CHAN = "chanVolume";
 // they are called like the api methods, e.g. channel.solo()
 const SOLO = "solo";
 const MUTE = "mute";
-const RECO = "arm";
+const ARM = "arm";
 
 /* ------------------------------------------------------ */
 /*                         CONSTS                         */
@@ -111,7 +111,7 @@ const CC_DEVICE_ENCODERS = Object.keys(CC_ENCODERS).map(Number);
 
 /* ----------------------- BUTTONS ---------------------- */
 const CC_SOLO = [16, 17, 18, 19, 20, 21, 22, 23];
-const CC_RECO = [100, 101, 102, 103, 104, 105, 106, 107];
+const CC_ARM = [100, 101, 102, 103, 104, 105, 106, 107];
 const CC_MUTE = [0, 1, 2, 3, 4, 5, 6, 7];
 
 /* ------------------------- LED ------------------------ */
@@ -122,13 +122,13 @@ const LED_RECO = [0x64, 0x65, 0x66, 0x67, 0x68, 0x69, 0x6a, 0x6b]; // ! NOT WORK
 const LED_MAPPING = {
   [SOLO]: LED_SOLO, // row 1
   [MUTE]: LED_MUTE, // row 2
-  [RECO]: LED_RECO, // shift + row 1; arm
+  [ARM]: LED_RECO, // shift + row 1; arm
 };
 
 const LED_CACHE = {
   [SOLO]: Array.from({length: MAX_PAGE}, () => new Array(NUM_FADERS).fill(0)),
   [MUTE]: Array.from({length: MAX_PAGE}, () => new Array(NUM_FADERS).fill(0)),
-  [RECO]: Array.from({length: MAX_PAGE}, () => new Array(NUM_FADERS).fill(0)),
+  [ARM]: Array.from({length: MAX_PAGE}, () => new Array(NUM_FADERS).fill(0)),
 };
 
 /* ----------------------- FADERS ----------------------- */
@@ -233,9 +233,9 @@ function init() {
 
       channel.arm().addValueObserver(function (isArmed) {
         var state = isArmed ? ON : OFF;
-        LED_CACHE[RECO][page][ledIndex] = state;
+        LED_CACHE[ARM][page][ledIndex] = state;
         if (page === CHANNEL_PAGE) {
-          midiOut.sendMidi(NOTE_ON, LED_MAPPING[RECO][ledIndex], state);
+          midiOut.sendMidi(NOTE_ON, LED_MAPPING[ARM][ledIndex], state);
         }
       });
     })(cix);
@@ -292,8 +292,8 @@ function handleChannelButtonPress(cc, value) {
         handleButtonPress(cc, MUTE, value);
         break;
 
-      case CC_RECO.includes(cc):
-        handleButtonPress(cc, RECO, value);
+      case CC_ARM.includes(cc):
+        handleButtonPress(cc, ARM, value);
         log("ARM pressed");
         break;
 
@@ -318,8 +318,8 @@ function handleButtonPress(cc, type, value) {
     case MUTE:
       buttons = CC_MUTE;
       break;
-    case RECO:
-      buttons = CC_RECO;
+    case ARM:
+      buttons = CC_ARM;
       break;
   }
 
@@ -379,7 +379,7 @@ function getLEDTracks() {
   for (let i = 0; i < NUM_FADERS; i++) {
     getLED(SOLO, i);
     getLED(MUTE, i);
-    getLED(RECO, i);
+    getLED(ARM, i);
   }
 }
 
@@ -446,7 +446,7 @@ function onMidi(status, cc, value) {
 
     case isNoteOff(status):
       if (cc == SHIFT) {
-        SHIFT_PRESSED = false
+        SHIFT_PRESSED = false;
         log(`SHIFT pressed: ${SHIFT_PRESSED}`);
       }
       break;
