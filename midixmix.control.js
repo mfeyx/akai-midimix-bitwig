@@ -263,8 +263,19 @@ function init() {
   remoteControls.selectedPageIndex().addValueObserver(function (index) {
     var names = remoteControls.pageNames().get();
     var name = names[index] || "?";
-    log("Remote controls page: " + index + " (" + name + ")");
-    notify("Device Page: " + name);
+    if (name !== "?") {
+      log("Remote controls page: " + index + " (" + name + ")");
+      notify("Device Page: " + name);
+    }
+  });
+
+  // notify whenever the selected device changes
+  cursorDevice.name().markInterested();
+  cursorDevice.name().addValueObserver(function (name) {
+    if (name) {
+      log("Device: " + name);
+      notify("Device: " + name);
+    }
   });
 
   // Subscribe to mute, solo, and arm state for every channel so that:
@@ -324,7 +335,6 @@ function handleChannelButtonPress(cc, value) {
         if (SHIFT_PRESSED) {
           cursorDevice.selectPrevious();
           log("SHIFT+BANK LEFT: previous device");
-          notify("Device ←");
         } else {
           CHANNEL_PAGE = Math.max(MIN_PAGE, CHANNEL_PAGE - 1);
           log(`BANK LEFT, Page: ${CHANNEL_PAGE}`);
@@ -338,7 +348,6 @@ function handleChannelButtonPress(cc, value) {
         if (SHIFT_PRESSED) {
           cursorDevice.selectNext();
           log("SHIFT+BANK RIGHT: next device");
-          notify("Device →");
         } else {
           CHANNEL_PAGE = Math.min(MAX_PAGE, CHANNEL_PAGE + 1);
           log(`BANK RIGHT, Page: ${CHANNEL_PAGE}`);
