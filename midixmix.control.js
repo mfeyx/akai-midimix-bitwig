@@ -204,6 +204,42 @@ function init() {
     var names = remoteControls.pageNames().get();
     log("Remote controls page: " + index + " (" + (names[index] || "?") + ")");
   });
+
+  // Subscribe to mute, solo, and arm state for every channel so that:
+  //   1. LED_CACHE is populated with the real project state on load.
+  //   2. Any subsequent change (e.g. another controller, automation) keeps
+  //      the cache — and, for the current page, the physical LEDs — in sync.
+  for (var cix = 0; cix < TRACKS; cix++) {
+    (function (cix) {
+      var page = Math.floor(cix / NUM_FADERS);
+      var ledIndex = cix % NUM_FADERS;
+      var channel = trackBank.getChannel(cix);
+
+      channel.mute().addValueObserver(function (isMuted) {
+        var state = isMuted ? ON : OFF;
+        LED_CACHE[MUTE][page][ledIndex] = state;
+        if (page === CHANNEL_PAGE) {
+          midiOut.sendMidi(NOTE_ON, LED_MAPPING[MUTE][ledIndex], state);
+        }
+      });
+
+      channel.solo().addValueObserver(function (isSoloed) {
+        var state = isSoloed ? ON : OFF;
+        LED_CACHE[SOLO][page][ledIndex] = state;
+        if (page === CHANNEL_PAGE) {
+          midiOut.sendMidi(NOTE_ON, LED_MAPPING[SOLO][ledIndex], state);
+        }
+      });
+
+      channel.arm().addValueObserver(function (isArmed) {
+        var state = isArmed ? ON : OFF;
+        LED_CACHE[RECO][page][ledIndex] = state;
+        if (page === CHANNEL_PAGE) {
+          midiOut.sendMidi(NOTE_ON, LED_MAPPING[RECO][ledIndex], state);
+        }
+      });
+    })(cix);
+  }
 }
 
 function exit() {
