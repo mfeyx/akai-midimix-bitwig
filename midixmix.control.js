@@ -125,9 +125,6 @@ const LED_MAPPING = {
   [RECO]: LED_RECO, // shift + row 1; arm
 };
 
-// TODO: LED CACHE MUSS Einträge mal Fader haben,
-// sodass jeder Kanal seine LED bekommt
-// nicht nur die ersten 8
 const LED_CACHE = {
   [SOLO]: Array.from({length: MAX_PAGE}, () => new Array(NUM_FADERS).fill(0)),
   [MUTE]: Array.from({length: MAX_PAGE}, () => new Array(NUM_FADERS).fill(0)),
@@ -217,7 +214,7 @@ function handleChannelButtonPress(cc, value) {
         break;
 
       case cc === SHIFT:
-        SHIFT_PRESSED = !SHIFT_PRESSED && cc == SHIFT;
+        SHIFT_PRESSED = cc == SHIFT;
         log(`SHIFT pressed: ${SHIFT_PRESSED}`);
         break;
 
@@ -307,7 +304,7 @@ function getLEDTracks() {
 function handleMainVolume(cc, value) {
   log(`Main Fader -> ${cc} : ${value}`);
   let volume = getVolume(value);
-  mainFader.getVolume().setRaw(volume);
+  mainFader.volume().setRaw(volume);
 }
 
 /* -------------------- CHANNEL FADER ------------------- */
@@ -319,7 +316,7 @@ function handleChannelVolume(cc, value) {
     var channel = trackBank.getChannel(cix);
     let volume = getVolume(value);
     log(`Changing volume of channel ${cix} to ${volume} (page: ${page})`);
-    channel.getVolume().setRaw(volume);
+    channel.volume().setRaw(volume);
     return;
   } catch (error) {
     handleError(error);
