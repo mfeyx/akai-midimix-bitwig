@@ -220,15 +220,25 @@ function handleChannelButtonPress(cc, value) {
     // log(`handleChannelButtonPress -> ${status} CH ${cc} : ${value}`);
     switch (true) {
       case cc === BANKL:
-        CHANNEL_PAGE = Math.max(MIN_PAGE, CHANNEL_PAGE - 1);
-        log(`BANK LEFT, Page: ${CHANNEL_PAGE}`);
-        getLEDTracks();
+        if (SHIFT_PRESSED) {
+          cursorDevice.selectPrevious();
+          log("SHIFT+BANK LEFT: previous device");
+        } else {
+          CHANNEL_PAGE = Math.max(MIN_PAGE, CHANNEL_PAGE - 1);
+          log(`BANK LEFT, Page: ${CHANNEL_PAGE}`);
+          getLEDTracks();
+        }
         break;
 
       case cc === BANKR:
-        CHANNEL_PAGE = Math.min(MAX_PAGE, CHANNEL_PAGE + 1);
-        log(`BANK RIGHT, Page: ${CHANNEL_PAGE}`);
-        getLEDTracks();
+        if (SHIFT_PRESSED) {
+          cursorDevice.selectNext();
+          log("SHIFT+BANK RIGHT: next device");
+        } else {
+          CHANNEL_PAGE = Math.min(MAX_PAGE, CHANNEL_PAGE + 1);
+          log(`BANK RIGHT, Page: ${CHANNEL_PAGE}`);
+          getLEDTracks();
+        }
         break;
 
       case cc === SHIFT:
