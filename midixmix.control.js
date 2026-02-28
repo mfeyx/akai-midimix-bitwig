@@ -185,6 +185,25 @@ function init() {
 
   // main fader
   mainFader = host.createMasterTrack(0);
+
+  // cursor track -> cursor device -> remote controls page (third encoder row)
+  cursorTrack = host.createCursorTrack(2, 0);
+  cursorDevice = cursorTrack.createCursorDevice();
+  remoteControls = cursorDevice.createCursorRemoteControlsPage(8);
+
+  // mark all 8 parameters as interested so Bitwig keeps them current
+  remoteControls.selectedPageIndex().markInterested();
+  remoteControls.pageNames().markInterested();
+  for (var i = 0; i < 8; i++) {
+    remoteControls.getParameter(i).markInterested();
+    remoteControls.getParameter(i).setIndication(true);
+  }
+
+  // log page name changes
+  remoteControls.selectedPageIndex().addValueObserver(function (index) {
+    var names = remoteControls.pageNames().get();
+    log("Remote controls page: " + index + " (" + (names[index] || "?") + ")");
+  });
 }
 
 function exit() {
@@ -353,6 +372,18 @@ function handleEncoder(cc, value) {
   }
 }
 
+/* ------------------- DEVICE ENCODERS ----------------- */
+function handleDeviceEncoder(cc, value) {
+  try {
+    log(`handleDeviceEncoder -> ${cc} : ${value}`);
+    var index = CC_ENCODERS[cc].chan; // 0-7, maps to parameter slot
+    remoteControls.getParameter(index).set(value / 127.0);
+    return;
+  } catch (error) {
+    handleError(error);
+  }
+}
+
 /* ------------------------------------------------------ */
 /*                   MIDI INPUT HANDLER                   */
 /* ------------------------------------------------------ */
@@ -377,6 +408,11 @@ function onMidi(status, cc, value) {
 
       if (CC_SEND_ENCODERS.includes(cc)) {
         handleEncoder(cc, value);
+        break;
+      }
+
+      if (CC_DEVICE_ENCODERS.includes(cc)) {
+        handleDeviceEncoder(cc, value);
         break;
       }
 
