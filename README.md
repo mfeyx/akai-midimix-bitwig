@@ -6,6 +6,21 @@ A full-featured Bitwig Studio controller script for the **Akai MIDImix**, with L
 
 ## Hardware Layout
 
+
+> **Heads up: Custom Hardware Layout**
+>
+> This script uses a **custom MIDI preset** (`bitwig.midimix`) that differs from the Akai MIDImix factory defaults. You must load this preset via the Akai MidiMix Editor before use. I also changed how the buttons work:
+>
+> | Physical label on hardware | Factory function | This script |
+> |---|---|---|
+> | Button Row 1 | Mute / Solo | **Solo** |
+> | Button Row 2 | Rec Arm | **Mute** |
+> | Right panel SOLO button | Solo | **SHIFT** |
+> | SHIFT * Button Row 2 (here: Mute) | n/a | **Rec Arm** |
+>
+> Without the custom preset, buttons will not behave as documented.
+
+
 ```
 ┌─────┬─────┬─────┬─────┬─────┬─────┬─────┬─────┐
 │ ENC │ ENC │ ENC │ ENC │ ENC │ ENC │ ENC │ ENC │  ← Send 1
@@ -84,7 +99,7 @@ Both buttons light up while held as tactile confirmation.
 Hold **SHIFT** to unlock a second layer of functionality. While SHIFT is held:
 
 - The **MUTE row LEDs switch** to show the current record arm state of each channel.
-- Channels 1 and 2 of the MUTE row **always light up** as a hint that those buttons navigate device pages.
+- Channels 1, 2, 7, and 8 of the **SOLO row light up** as hints for the navigation buttons below them.
 
 | SHIFT + … | Function |
 |---|---|
@@ -93,6 +108,8 @@ Hold **SHIFT** to unlock a second layer of functionality. While SHIFT is held:
 | **BANK R** | Select the **next device** on the currently focused track |
 | **Channel 1 bottom button** | Go to the **previous remote controls page** of the current device |
 | **Channel 2 bottom button** | Go to the **next remote controls page** of the current device |
+| **Channel 7 bottom button** | Select the **previous track** in Bitwig |
+| **Channel 8 bottom button** | Select the **next track** in Bitwig |
 
 > **Note:** SHIFT + SOLO does nothing — solo is only available without SHIFT.
 
@@ -104,9 +121,8 @@ When SHIFT is released, all LEDs return to their normal SOLO / MUTE state.
 
 | LED | Normal | While SHIFT held |
 |---|---|---|
-| Row 1 (SOLO) | Lit when channel is soloed | Unchanged |
+| Row 1 (SOLO) | Lit when channel is soloed | Ch 1, 2, 7, 8 lit as navigation hints |
 | Row 2 (MUTE) | Lit when channel is muted | Shows record arm state |
-| Ch 1 & 2 MUTE LEDs | Mute state | Always lit (device page nav hint) |
 | BANK L / BANK R | Off | Lit while physically pressed |
 
 On script load, a **startup LED sweep** animation runs across both rows, then restores the actual project state.
@@ -125,6 +141,7 @@ Bitwig shows a small popup notification when you interact with the controller:
 | Turn a device encoder | `Cutoff: 880 Hz` |
 | Change device page | `Device Page: Filter` |
 | Switch device | `Device: Reverb` |
+| Select a track | `Track: Bass` |
 | Change channel page | `Channel Page → 3` |
 | Press SHIFT | Quick hint of available SHIFT actions |
 
