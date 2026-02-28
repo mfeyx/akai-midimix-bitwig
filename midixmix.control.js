@@ -195,7 +195,6 @@ function exit() {
 /*                   MIDI STATUS HANDLER                  */
 /* ------------------------------------------------------ */
 
-
 /* ----------------------- BUTTONS ---------------------- */
 function handleChannelButtonPress(cc, value) {
   try {
@@ -267,7 +266,18 @@ function handleButtonPress(cc, type, value) {
       var channel = trackBank.getChannel(cix);
       channel[type].toggle();
       // LED SETTINGS
-      updateLED(type, index);
+      toggleLED(type, index);
+
+      // Solo and mute are exclusive: turning one ON turns the other OFF
+      if (type === SOLO || type === MUTE) {
+        var otherType = type === SOLO ? MUTE : SOLO;
+        var newState = LED_CACHE[type][CHANNEL_PAGE][index];
+        if (newState === ON && LED_CACHE[otherType][CHANNEL_PAGE][index] === ON) {
+          channel[otherType].toggle();
+          setLED(otherType, index, OFF);
+        }
+      }
+
       return;
     }
 
@@ -277,9 +287,15 @@ function handleButtonPress(cc, type, value) {
   }
 }
 
-function updateLED(type, index) {
+function toggleLED(type, index) {
   var led = LED_MAPPING[type][index];
   var value = toggleValue(LED_CACHE[type][CHANNEL_PAGE][index]);
+  LED_CACHE[type][CHANNEL_PAGE][index] = value;
+  midiOut.sendMidi(NOTE_ON, led, value);
+}
+
+function setLED(type, index, value) {
+  var led = LED_MAPPING[type][index];
   LED_CACHE[type][CHANNEL_PAGE][index] = value;
   midiOut.sendMidi(NOTE_ON, led, value);
 }
@@ -298,7 +314,6 @@ function getLEDTracks() {
     getLED(RECO, i);
   }
 }
-
 
 /* --------------------- MAIN FADER --------------------- */
 function handleMainVolume(cc, value) {
