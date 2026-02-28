@@ -327,8 +327,10 @@ function handleChannelButtonPress(cc, value) {
         break;
 
       case CC_SOLO.includes(cc):
-        log("SOLO pressed");
-        handleButtonPress(cc, SOLO, value);
+        if (!SHIFT_PRESSED) {
+          log("SOLO pressed");
+          handleButtonPress(cc, SOLO, value);
+        }
         break;
 
       case CC_MUTE.includes(cc):
@@ -342,9 +344,17 @@ function handleChannelButtonPress(cc, value) {
         }
         break;
 
+      // USE THOSE CC MESSAGES FOR SPECFIC FUNCTIONS
       case CC_ARM.includes(cc):
-        handleButtonPress(cc, ARM, value);
-        log("ARM pressed");
+        if (value === ON) {
+          if (cc === CC_ARM[0]) {
+            remoteControls.selectPreviousPage(false);
+            log("Device page: previous");
+          } else if (cc === CC_ARM[1]) {
+            remoteControls.selectNextPage(false);
+            log("Device page: next");
+          }
+        }
         break;
 
       default:
