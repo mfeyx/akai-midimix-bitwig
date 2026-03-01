@@ -189,7 +189,7 @@ function rawToDb(raw) {
 
 // Which SOLO indices are active buttons in each non-Mixer mode
 const TRACK_MODE_SOLO_ACTIVE   = [0, 1, 2, 3];
-const DEVICE_MODE_SOLO_ACTIVE  = [0, 1, 2, 3, 6, 7];
+const DEVICE_MODE_SOLO_ACTIVE  = [0, 1, 2, 3, 5, 6, 7];
 const PROJECT_MODE_SOLO_ACTIVE = [0, 1, 2, 4, 6, 7];
 
 function updateProgramModeLEDs() {
@@ -278,6 +278,10 @@ function ledStartupAnimation() {
   host.scheduleTask(function () {
     getLEDTracks();
     updateProgramModeLEDs();
+    // Re-apply parameter indications after Bitwig has resolved the device context
+    for (var i = 0; i < 8; i++) {
+      remoteControls.getParameter(i).setIndication(true);
+    }
   }, phase3);
 }
 
@@ -356,6 +360,10 @@ function init() {
       log("Remote controls page: " + index + " (" + name + ")");
       notify("Device Page: " + name);
     }
+    // Re-apply indications so the parameter bar stays visible after page changes
+    // for (var i = 0; i < 8; i++) {
+    //   remoteControls.getParameter(i).setIndication(true);
+    // }
   });
 
   // notify whenever the selected device changes
@@ -365,6 +373,12 @@ function init() {
       log("Device: " + name);
       notify("Device: " + name);
     }
+    // Re-apply indications after a short delay so the new device context is resolved
+    // host.scheduleTask(function() {
+    //   for (var i = 0; i < 8; i++) {
+    //     remoteControls.getParameter(i).setIndication(true);
+    //   }
+    // }, 200);
   });
 
   // notify whenever the selected track changes
@@ -564,6 +578,9 @@ function handleDeviceMode(cc, value) {
   } else if (cc === CC_SOLO[3]) {
     remoteControls.selectNextPage(false);
     log("[Device] Device page: next");
+  } else if (cc === CC_SOLO[5]) {
+    log("[Device] Focus device column");
+    application.getAction("focus_or_toggle_device_panel").invoke();
   } else if (cc === CC_SOLO[6]) {
     cursorDevice.isExpanded().toggle();
     log("[Device] Toggle device expanded");
