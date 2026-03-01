@@ -3,7 +3,7 @@ loadAPI(18);
 host.defineController(
   "Akai",
   "Akai Midimix",
-  "1.1",
+  "2.0",
   "7b8cd61c-2718-4d77-80b5-a2103f92b69c",
   "mfeyx",
 );
