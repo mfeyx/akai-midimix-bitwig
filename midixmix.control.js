@@ -64,7 +64,7 @@ const MIN_PAGE = 0;
 const MAX_PAGE = 20;
 
 const NUM_FADERS = 8;
-const NUM_SCENES = 8
+const NUM_SCENES = 6
 const NUM_SENDS = 2
 
 const TRACKS = MAX_PAGE * NUM_FADERS;
@@ -128,16 +128,17 @@ const CC_DEVICE_ENCODERS = Object.keys(CC_ENCODERS).map(Number);
 /* ----------------------- BUTTONS ---------------------- */
 const CC_SOLO = [16, 17, 18, 19, 20, 21, 22, 23];
 const CC_REC_ARM = [0, 1, 2, 3, 4, 5, 6, 7];
+// only usable when hitting SHIFt
 const CC_SECONDARY = [100, 101, 102, 103, 104, 105, 106, 107];
 
 /* ------------------------- LED ------------------------ */
 const LED_SOLO = [0x01, 0x04, 0x07, 0x0a, 0x0d, 0x10, 0x13, 0x16];
-const LED_MUTE = [0x03, 0x06, 0x09, 0x0c, 0x0f, 0x12, 0x15, 0x18];
+const LED_REC_ARM = [0x03, 0x06, 0x09, 0x0c, 0x0f, 0x12, 0x15, 0x18];
 
 const LED_MAPPING = {
   [SOLO]: LED_SOLO, // row 1
-  [MUTE]: LED_MUTE, // row 2
-  [ARM]:  LED_MUTE, // same physical LEDs as MUTE; shown when SHIFT is held
+  [MUTE]: LED_REC_ARM, // row 2
+  [ARM]:  LED_REC_ARM, // same physical LEDs as MUTE; shown when SHIFT is held
 };
 
 const LED_CACHE = {
@@ -145,6 +146,9 @@ const LED_CACHE = {
   [MUTE]: Array.from({length: MAX_PAGE}, () => new Array(NUM_FADERS).fill(0)),
   [ARM]: Array.from({length: MAX_PAGE}, () => new Array(NUM_FADERS).fill(0)),
 };
+
+// Scene existence cache — one entry per scene slot (0-7)
+const SCENE_LED_CACHE = new Array(NUM_FADERS).fill(0);
 
 /* ----------------------- FADERS ----------------------- */
 const CC_MAIN_FADER = 91;
@@ -154,7 +158,7 @@ const CC_CHANNEL_FADERS = [92, 93, 94, 95, 96, 97, 98, 99];
 /*                         HELPERS                        */
 /* ------------------------------------------------------ */
 function toggleValue(value) {
-  return value === 0 ? 127 : 0;
+  return value === OFF ? ON : OFF;
 }
 
 function handleError(error) {
@@ -168,7 +172,7 @@ function getChannelIndex(index) {
 }
 
 function getVolume(value) {
-  return Math.min(0.795, value / 127); // 0.795 = -6db
+  return Math.min(0.795, value / ON); // 0.795 = -6db
 }
 
 function rawToDb(raw) {
@@ -213,12 +217,17 @@ function updateProgramModeLEDs() {
       }
       break;
 
-    case 4: // Project: both bank LEDs on; light up active SOLO buttons
+    case 4: // Project: both bank LEDs on; SOLO row = active buttons, MUTE row = scene existence
       midiOut.sendMidi(NOTE_ON, BANKL, ON);
       midiOut.sendMidi(NOTE_ON, BANKR, ON);
       for (var i = 0; i < NUM_FADERS; i++) {
         var isActive = PROJECT_MODE_SOLO_ACTIVE.includes(i);
         midiOut.sendMidi(NOTE_ON, LED_SOLO[i], isActive ? ON : OFF);
+      }
+      for (var i = 0; i < NUM_FADERS; i++) {
+        // index 7 = stop all clips button — always lit; index 6 = unused — always off
+        var ledState = i === 7 ? ON : (i < NUM_SCENES ? SCENE_LED_CACHE[i] : OFF);
+        midiOut.sendMidi(NOTE_ON, LED_REC_ARM[i], ledState);
       }
       break;
   }
@@ -237,7 +246,7 @@ function ledStartupAnimation() {
         midiOut.sendMidi(NOTE_ON, LED_SOLO[i], ON);
       }, i * STEP);
       host.scheduleTask(function () {
-        midiOut.sendMidi(NOTE_ON, LED_MUTE[i], ON);
+        midiOut.sendMidi(NOTE_ON, LED_REC_ARM[i], ON);
       }, i * STEP + STEP / 2);
     })(i);
   }
@@ -250,7 +259,7 @@ function ledStartupAnimation() {
         midiOut.sendMidi(NOTE_ON, LED_SOLO[i], OFF);
       }, phase2 + i * STEP);
       host.scheduleTask(function () {
-        midiOut.sendMidi(NOTE_ON, LED_MUTE[i], OFF);
+        midiOut.sendMidi(NOTE_ON, LED_REC_ARM[i], OFF);
       }, phase2 + i * STEP + STEP / 2);
     })(i);
   }
@@ -289,6 +298,21 @@ function init() {
   application = host.createApplication();
   arranger = host.createArranger();
   sceneBank = host.createSceneBank(NUM_SCENES);
+
+  // Subscribe to scene existence to drive MUTE-row LEDs in Project Mode
+  for (var si = 0; si < NUM_SCENES; si++) {
+    (function(si) {
+      var scene = sceneBank.getScene(si);
+      scene.exists().markInterested();
+      scene.exists().addValueObserver(function(exists) {
+        var state = exists ? ON : OFF;
+        SCENE_LED_CACHE[si] = state;
+        if (PROGRAM_MODE === 4) {
+          midiOut.sendMidi(NOTE_ON, LED_REC_ARM[si], state);
+        }
+      });
+    })(si);
+  }
 
   // mark all 8 parameters as interested so Bitwig keeps them current
   remoteControls.selectedPageIndex().markInterested();
@@ -357,7 +381,7 @@ function init() {
       channel.arm().addValueObserver(function (isArmed) {
         var state = isArmed ? ON : OFF;
         LED_CACHE[ARM][page][ledIndex] = state;
-        if (page === CHANNEL_PAGE && !SHIFT_PRESSED) {
+        if (page === CHANNEL_PAGE && !SHIFT_PRESSED && PROGRAM_MODE !== 4) {
           midiOut.sendMidi(NOTE_ON, LED_MAPPING[ARM][ledIndex], state);
         }
       });
@@ -527,13 +551,17 @@ function handleDeviceMode(cc, value) {
 function handleProjectMode(cc, value) {
   if (value !== ON) return;
 
-  // CC_SECONDARY row — launch scenes
+  // CC_REC_ARM row — launch scenes (0-5) or stop all clips (7)
   if (CC_REC_ARM.includes(cc)) {
     var sceneIndex = CC_REC_ARM.indexOf(cc);
-    var scene = sceneBank.getScene(sceneIndex);
-    if (scene.exists().get()) {
-      scene.launch();
+    if (sceneIndex < NUM_SCENES) {
+      sceneBank.getScene(sceneIndex).launch();
       log(`[Project] Launch scene ${sceneIndex}`);
+    } else if (sceneIndex === 7) {
+      for (var t = 0; t < TRACKS; t++) {
+        trackBank.getTrack(t).stop();
+      }
+      log("[Project] Stop all clips");
     }
     return;
   }
@@ -629,8 +657,11 @@ function getLEDTracks() {
   log(`Updating LEDs on PAGE ${CHANNEL_PAGE}`);
   for (let i = 0; i < NUM_FADERS; i++) {
     getLED(SOLO, i);
-    // MUTE and ARM share the same physical LEDs — show whichever is active
-    if (SHIFT_PRESSED) {
+    // MUTE row: show scene existence in Project Mode, otherwise MUTE/ARM
+    if (PROGRAM_MODE === 4) {
+      var ledState = i === 7 ? ON : (i < NUM_SCENES ? SCENE_LED_CACHE[i] : OFF);
+      midiOut.sendMidi(NOTE_ON, LED_REC_ARM[i], ledState);
+    } else if (SHIFT_PRESSED) {
       getLED(MUTE, i);
     } else {
       getLED(ARM, i);
@@ -713,11 +744,13 @@ function onMidi(status, cc, value) {
         }
         SHIFT_PRESSED = false;
         log(`SHIFT released (held ${pressDuration}ms)`);
-        // Switch MUTE-row LEDs back to ARM state
-        for (let i = 0; i < NUM_FADERS; i++) {
-          getLED(ARM, i);
+        // Switch MUTE-row LEDs back to ARM state (not in Project Mode — handled by updateProgramModeLEDs)
+        if (PROGRAM_MODE !== 4) {
+          for (let i = 0; i < NUM_FADERS; i++) {
+            getLED(ARM, i);
+          }
         }
-        // Restore BANK LEDs to reflect current program mode
+        // Restore BANK LEDs and mode-specific LEDs
         updateProgramModeLEDs();
       } else if (cc === BANKL) {
         // Keep BANKL LED on in Track Mode (2) or Project Mode (4)
