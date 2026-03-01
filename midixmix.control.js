@@ -62,7 +62,11 @@ const ARM = "arm";
 /* ------------------------------------------------------ */
 const MIN_PAGE = 0;
 const MAX_PAGE = 20;
+
 const NUM_FADERS = 8;
+const NUM_SCENES = 8
+const NUM_SENDS = 2
+
 const TRACKS = MAX_PAGE * NUM_FADERS;
 
 /* ------------------------------------------------------ */
@@ -123,8 +127,8 @@ const CC_DEVICE_ENCODERS = Object.keys(CC_ENCODERS).map(Number);
 
 /* ----------------------- BUTTONS ---------------------- */
 const CC_SOLO = [16, 17, 18, 19, 20, 21, 22, 23];
-const CC_MUTE = [0, 1, 2, 3, 4, 5, 6, 7];
-const CC_ARM = [100, 101, 102, 103, 104, 105, 106, 107];
+const CC_REC_ARM = [0, 1, 2, 3, 4, 5, 6, 7];
+const CC_SECONDARY = [100, 101, 102, 103, 104, 105, 106, 107];
 
 /* ------------------------- LED ------------------------ */
 const LED_SOLO = [0x01, 0x04, 0x07, 0x0a, 0x0d, 0x10, 0x13, 0x16];
@@ -270,8 +274,8 @@ function init() {
   // sending to controller (midimix) -> LED
   midiOut = host.getMidiOutPort(0);
 
-  // 8 channel faders, 3 sends, 0 scenes
-  trackBank = host.createMainTrackBank(TRACKS, 2, 0);
+  // 8 channel faders, 2 sends, 0 scenes
+  trackBank = host.createMainTrackBank(TRACKS, NUM_SENDS, NUM_SCENES);
 
   // main fader
   mainFader = host.createMasterTrack(0);
@@ -284,6 +288,7 @@ function init() {
   // application + arranger for Project Mode
   application = host.createApplication();
   arranger = host.createArranger();
+  sceneBank = host.createSceneBank(NUM_SCENES);
 
   // mark all 8 parameters as interested so Bitwig keeps them current
   remoteControls.selectedPageIndex().markInterested();
@@ -385,10 +390,13 @@ function handleChannelButtonPress(cc, value) {
       return;
     }
 
-    // BANKL / BANKR — always handled regardless of mode
+    // BANKL / BANKR — mode-aware
     if (cc === BANKL) {
       midiOut.sendMidi(NOTE_ON, BANKL, ON);
-      if (SHIFT_PRESSED) {
+      if (PROGRAM_MODE === 4) {
+        sceneBank.scrollBackwards();
+        log("[Project] Scene Bank: scroll up");
+      } else if (SHIFT_PRESSED) {
         SHIFT_ACTION_TAKEN = true;
         cursorDevice.selectPrevious();
         log("SHIFT+BANKL: previous device");
@@ -403,7 +411,10 @@ function handleChannelButtonPress(cc, value) {
 
     if (cc === BANKR) {
       midiOut.sendMidi(NOTE_ON, BANKR, ON);
-      if (SHIFT_PRESSED) {
+      if (PROGRAM_MODE === 4) {
+        sceneBank.scrollForwards();
+        log("[Project] Scene Bank: scroll down");
+      } else if (SHIFT_PRESSED) {
         SHIFT_ACTION_TAKEN = true;
         cursorDevice.selectNext();
         log("SHIFT+BANKR: next device");
@@ -440,24 +451,24 @@ function handleMixerMode(cc, value) {
   }
 
   // MUTE row — ARM normally; SHIFT+MUTE = mute
-  if (CC_MUTE.includes(cc)) {
+  if (CC_REC_ARM.includes(cc)) {
     if (SHIFT_PRESSED) {
       SHIFT_ACTION_TAKEN = true;
       log("[Mixer] SHIFT+MUTE: toggle mute");
       handleButtonPress(cc, MUTE, value);
     } else {
       log("[Mixer] ARM pressed");
-      var muteIndex = CC_MUTE.indexOf(cc);
-      handleButtonPress(CC_ARM[muteIndex], ARM, value);
+      var muteIndex = CC_REC_ARM.indexOf(cc);
+      handleButtonPress(CC_SECONDARY[muteIndex], ARM, value);
     }
     return;
   }
 
   // ARM row — SHIFT+ARM = mute the channel; no other function in Mixer mode
-  if (CC_ARM.includes(cc) && value === ON) {
+  if (CC_SECONDARY.includes(cc) && value === ON) {
     if (SHIFT_PRESSED) {
       SHIFT_ACTION_TAKEN = true;
-      var armIndex = CC_ARM.indexOf(cc);
+      var armIndex = CC_SECONDARY.indexOf(cc);
       var cix = getChannelIndex(armIndex);
       trackBank.getTrack(cix).mute().toggle();
       log(`[Mixer] SHIFT+ARM[${armIndex}]: mute channel ${cix}`);
@@ -514,7 +525,20 @@ function handleDeviceMode(cc, value) {
 
 /* ------------------ MODE 4: PROJECT ------------------- */
 function handleProjectMode(cc, value) {
-  if (!CC_SOLO.includes(cc) || value !== ON) return;
+  if (value !== ON) return;
+
+  // CC_SECONDARY row — launch scenes
+  if (CC_REC_ARM.includes(cc)) {
+    var sceneIndex = CC_REC_ARM.indexOf(cc);
+    var scene = sceneBank.getScene(sceneIndex);
+    if (scene.exists().get()) {
+      scene.launch();
+      log(`[Project] Launch scene ${sceneIndex}`);
+    }
+    return;
+  }
+
+  if (!CC_SOLO.includes(cc)) return;
 
   if (cc === CC_SOLO[0]) {
     application.setPanelLayout("ARRANGE");
@@ -543,10 +567,10 @@ function handleButtonPress(cc, type, value) {
       buttons = CC_SOLO;
       break;
     case MUTE:
-      buttons = CC_MUTE;
+      buttons = CC_REC_ARM;
       break;
     case ARM:
-      buttons = CC_ARM;
+      buttons = CC_SECONDARY;
       break;
   }
 
@@ -670,7 +694,7 @@ function handleDeviceEncoder(cc, value) {
 /*                   MIDI INPUT HANDLER                   */
 /* ------------------------------------------------------ */
 function onMidi(status, cc, value) {
-  // log(`status: ${status}, cc: ${cc}, value: ${value}`);
+  log(`status: ${status}, cc: ${cc}, value: ${value}`);
 
   switch (true) {
     case isNoteOn(status):
@@ -696,11 +720,11 @@ function onMidi(status, cc, value) {
         // Restore BANK LEDs to reflect current program mode
         updateProgramModeLEDs();
       } else if (cc === BANKL) {
-        // Keep BANKL LED on if in Track Mode (mode 2), else off
-        midiOut.sendMidi(NOTE_ON, BANKL, PROGRAM_MODE === 2 ? ON : OFF);
+        // Keep BANKL LED on in Track Mode (2) or Project Mode (4)
+        midiOut.sendMidi(NOTE_ON, BANKL, (PROGRAM_MODE === 2 || PROGRAM_MODE === 4) ? ON : OFF);
       } else if (cc === BANKR) {
-        // Keep BANKR LED on if in Device Mode (mode 3), else off
-        midiOut.sendMidi(NOTE_ON, BANKR, PROGRAM_MODE === 3 ? ON : OFF);
+        // Keep BANKR LED on in Device Mode (3) or Project Mode (4)
+        midiOut.sendMidi(NOTE_ON, BANKR, (PROGRAM_MODE === 3 || PROGRAM_MODE === 4) ? ON : OFF);
       }
       break;
 
