@@ -177,8 +177,9 @@ function rawToDb(raw) {
 /* ------------------------------------------------------ */
 
 // Which SOLO indices are active buttons in each non-Mixer mode
-const TRACK_MODE_SOLO_ACTIVE  = [0, 1, 2, 3];
-const DEVICE_MODE_SOLO_ACTIVE = [0, 1, 2, 3, 6, 7];
+const TRACK_MODE_SOLO_ACTIVE   = [0, 1, 2, 3];
+const DEVICE_MODE_SOLO_ACTIVE  = [0, 1, 2, 3, 6, 7];
+const PROJECT_MODE_SOLO_ACTIVE = [0, 1, 2, 6, 7];
 
 function updateProgramModeLEDs() {
   switch (PROGRAM_MODE) {
@@ -204,6 +205,15 @@ function updateProgramModeLEDs() {
       midiOut.sendMidi(NOTE_ON, BANKR, ON);
       for (var i = 0; i < NUM_FADERS; i++) {
         var isActive = DEVICE_MODE_SOLO_ACTIVE.includes(i);
+        midiOut.sendMidi(NOTE_ON, LED_SOLO[i], isActive ? ON : OFF);
+      }
+      break;
+
+    case 4: // Project: both bank LEDs on; light up active SOLO buttons
+      midiOut.sendMidi(NOTE_ON, BANKL, ON);
+      midiOut.sendMidi(NOTE_ON, BANKR, ON);
+      for (var i = 0; i < NUM_FADERS; i++) {
+        var isActive = PROJECT_MODE_SOLO_ACTIVE.includes(i);
         midiOut.sendMidi(NOTE_ON, LED_SOLO[i], isActive ? ON : OFF);
       }
       break;
@@ -270,6 +280,10 @@ function init() {
   cursorTrack = host.createCursorTrack(2, 0);
   cursorDevice = cursorTrack.createCursorDevice();
   remoteControls = cursorDevice.createCursorRemoteControlsPage(8);
+
+  // application + arranger for Project Mode
+  application = host.createApplication();
+  arranger = host.createArranger();
 
   // mark all 8 parameters as interested so Bitwig keeps them current
   remoteControls.selectedPageIndex().markInterested();
@@ -404,9 +418,10 @@ function handleChannelButtonPress(cc, value) {
 
     // Dispatch to the active mode handler
     switch (PROGRAM_MODE) {
-      case 1: handleMixerMode(cc, value);  break;
-      case 2: handleTrackMode(cc, value);  break;
-      case 3: handleDeviceMode(cc, value); break;
+      case 1: handleMixerMode(cc, value);   break;
+      case 2: handleTrackMode(cc, value);   break;
+      case 3: handleDeviceMode(cc, value);  break;
+      case 4: handleProjectMode(cc, value); break;
     }
   } catch (error) {
     handleError(error);
@@ -494,6 +509,28 @@ function handleDeviceMode(cc, value) {
   } else if (cc === CC_SOLO[7]) {
     cursorDevice.isRemoteControlsSectionVisible().toggle();
     log("[Device] Toggle remote controls visibility");
+  }
+}
+
+/* ------------------ MODE 4: PROJECT ------------------- */
+function handleProjectMode(cc, value) {
+  if (!CC_SOLO.includes(cc) || value !== ON) return;
+
+  if (cc === CC_SOLO[0]) {
+    application.setPanelLayout("ARRANGE");
+    log("[Project] Show Arrange");
+  } else if (cc === CC_SOLO[1]) {
+    application.setPanelLayout("MIX");
+    log("[Project] Show Mix");
+  } else if (cc === CC_SOLO[2]) {
+    application.toggleNoteEditor();
+    log("[Project] Toggle Edit view");
+  } else if (cc === CC_SOLO[6]) {
+    arranger.isClipLauncherVisible().toggle();
+    log("[Project] Toggle Clip Launcher");
+  } else if (cc === CC_SOLO[7]) {
+    arranger.isTimelineVisible().toggle();
+    log("[Project] Toggle Arranger Timeline");
   }
 }
 
@@ -645,8 +682,8 @@ function onMidi(status, cc, value) {
         var pressDuration = Date.now() - SHIFT_PRESS_TIME;
         if (!SHIFT_ACTION_TAKEN && pressDuration < SHIFT_SHORT_PRESS_MS) {
           // Short press: cycle to the next program mode (1 → 2 → 3 → 1)
-          PROGRAM_MODE = (PROGRAM_MODE % 3) + 1;
-          var modeNames = ['', 'Mixer', 'Track', 'Device'];
+          PROGRAM_MODE = (PROGRAM_MODE % 4) + 1;
+          var modeNames = ['', 'Mixer', 'Track', 'Device', 'Project'];
           log(`Program Mode: ${PROGRAM_MODE} (${modeNames[PROGRAM_MODE]})`);
           notify(`Mode: ${modeNames[PROGRAM_MODE]}`);
         }
