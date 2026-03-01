@@ -270,7 +270,7 @@ function init() {
       channel.mute().addValueObserver(function (isMuted) {
         var state = isMuted ? ON : OFF;
         LED_CACHE[MUTE][page][ledIndex] = state;
-        if (page === CHANNEL_PAGE && !SHIFT_PRESSED) {
+        if (page === CHANNEL_PAGE && SHIFT_PRESSED) {
           midiOut.sendMidi(NOTE_ON, LED_MAPPING[MUTE][ledIndex], state);
         }
       });
@@ -286,7 +286,7 @@ function init() {
       channel.arm().addValueObserver(function (isArmed) {
         var state = isArmed ? ON : OFF;
         LED_CACHE[ARM][page][ledIndex] = state;
-        if (page === CHANNEL_PAGE && SHIFT_PRESSED) {
+        if (page === CHANNEL_PAGE && !SHIFT_PRESSED) {
           midiOut.sendMidi(NOTE_ON, LED_MAPPING[ARM][ledIndex], state);
         }
       });
@@ -338,9 +338,9 @@ function handleChannelButtonPress(cc, value) {
       case cc === SHIFT:
         SHIFT_PRESSED = true;
         log(`SHIFT pressed: ${SHIFT_PRESSED}`);
-        // Switch MUTE-row LEDs to show ARM state
+        // Switch MUTE-row LEDs to show MUTE state
         for (let i = 0; i < NUM_FADERS; i++) {
-          getLED(ARM, i);
+          getLED(MUTE, i);
         }
         break;
 
@@ -353,12 +353,12 @@ function handleChannelButtonPress(cc, value) {
 
       case CC_MUTE.includes(cc):
         if (SHIFT_PRESSED) {
-          log("SHIFT+MUTE -> ARM pressed");
+          log("SHIFT+MUTE -> MUTE pressed");
+          handleButtonPress(cc, MUTE, value);
+        } else {
+          log("ARM pressed");
           var muteIndex = CC_MUTE.indexOf(cc);
           handleButtonPress(CC_ARM[muteIndex], ARM, value);
-        } else {
-          log("MUTE pressed");
-          handleButtonPress(cc, MUTE, value);
         }
         break;
 
@@ -462,9 +462,9 @@ function getLEDTracks() {
     getLED(SOLO, i);
     // MUTE and ARM share the same physical LEDs — show whichever is active
     if (SHIFT_PRESSED) {
-      getLED(ARM, i);
-    } else {
       getLED(MUTE, i);
+    } else {
+      getLED(ARM, i);
     }
   }
 }
@@ -536,9 +536,9 @@ function onMidi(status, cc, value) {
       if (cc == SHIFT) {
         SHIFT_PRESSED = false;
         log(`SHIFT pressed: ${SHIFT_PRESSED}`);
-        // Switch MUTE-row LEDs back to MUTE state
+        // Switch MUTE-row LEDs back to ARM state
         for (let i = 0; i < NUM_FADERS; i++) {
-          getLED(MUTE, i);
+          getLED(ARM, i);
         }
       } else if (cc === BANKL) {
         midiOut.sendMidi(NOTE_ON, BANKL, OFF);

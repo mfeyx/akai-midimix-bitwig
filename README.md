@@ -28,7 +28,7 @@ A full-featured Bitwig Studio controller script for the **Akai MIDImix**, with L
 │ ENC │ ENC │ ENC │ ENC │ ENC │ ENC │ ENC │ ENC │  ← Device Parameters
 ├─────┼─────┼─────┼─────┼─────┼─────┼─────┼─────┤
 │SOLO │SOLO │SOLO │SOLO │SOLO │SOLO │SOLO │SOLO │  ← Solo buttons (LED row 1)
-│MUTE │MUTE │MUTE │MUTE │MUTE │MUTE │MUTE │MUTE │  ← Mute buttons (LED row 2)
+│ARM  │ARM  │ARM  │ARN  │ARM  │ARM  │ARM  │ARM  │  ← Rec Arm buttons (LED row 2)
 ├─────┼─────┼─────┼─────┼─────┼─────┼─────┼─────┤
 │ FAD │ FAD │ FAD │ FAD │ FAD │ FAD │ FAD │ FAD │  ← Channel faders
 └─────┴─────┴─────┴─────┴─────┴─────┴─────┴─────┘
@@ -74,7 +74,7 @@ Each channel has **three encoders** stacked vertically:
 | Button | Function |
 |---|---|
 | **SOLO** | Toggle solo for that channel |
-| **MUTE** | Toggle mute for that channel |
+| **ARN **ARM oggle mute for that channel |
 
 Solo and mute are **mutually exclusive** — enabling one automatically disables the other on the same channel.
 
@@ -103,7 +103,7 @@ Hold **SHIFT** to unlock a second layer of functionality. While SHIFT is held:
 
 | SHIFT + … | Function |
 |---|---|
-| **MUTE button** (any channel) | Toggle record arm for that channel. Only works on tracks that support arming (audio/instrument). |
+| **REC ARM button** (any channel) | Toggle mute for that channel. |
 | **BANK L** | Select the **previous device** on the currently focused track |
 | **BANK R** | Select the **next device** on the currently focused track |
 | **Channel 1 bottom button** | Go to the **previous remote controls page** of the current device |
