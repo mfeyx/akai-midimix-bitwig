@@ -175,19 +175,38 @@ function rawToDb(raw) {
 /* ------------------------------------------------------ */
 /*                    PROGRAM MODE LEDs                   */
 /* ------------------------------------------------------ */
+
+// Which SOLO indices are active buttons in each non-Mixer mode
+// const TRACK_MODE_SOLO_ACTIVE  = [0, 1, 6, 7];
+const TRACK_MODE_SOLO_ACTIVE  = [0, 1];
+const DEVICE_MODE_SOLO_ACTIVE = [0, 1, 2, 3];
+
 function updateProgramModeLEDs() {
   switch (PROGRAM_MODE) {
-    case 1: // Mixer: both bank LEDs off
+    case 1: // Mixer: both bank LEDs off; restore SOLO row from cache
       midiOut.sendMidi(NOTE_ON, BANKL, OFF);
       midiOut.sendMidi(NOTE_ON, BANKR, OFF);
+      for (var i = 0; i < NUM_FADERS; i++) {
+        getLED(SOLO, i);
+      }
       break;
-    case 2: // Track: BANKL on, BANKR off
+
+    case 2: // Track: BANKL on, BANKR off; light up active SOLO buttons
       midiOut.sendMidi(NOTE_ON, BANKL, ON);
       midiOut.sendMidi(NOTE_ON, BANKR, OFF);
+      for (var i = 0; i < NUM_FADERS; i++) {
+        var isActive = TRACK_MODE_SOLO_ACTIVE.includes(i);
+        midiOut.sendMidi(NOTE_ON, LED_SOLO[i], isActive ? ON : OFF);
+      }
       break;
-    case 3: // Device: BANKL off, BANKR on
+
+    case 3: // Device: BANKL off, BANKR on; light up active SOLO buttons
       midiOut.sendMidi(NOTE_ON, BANKL, OFF);
       midiOut.sendMidi(NOTE_ON, BANKR, ON);
+      for (var i = 0; i < NUM_FADERS; i++) {
+        var isActive = DEVICE_MODE_SOLO_ACTIVE.includes(i);
+        midiOut.sendMidi(NOTE_ON, LED_SOLO[i], isActive ? ON : OFF);
+      }
       break;
   }
 }
@@ -442,17 +461,18 @@ function handleTrackMode(cc, value) {
   } else if (cc === CC_SOLO[1]) {
     cursorTrack.selectNext();
     log("[Track] Track: next");
-  } else if (cc === CC_SOLO[6]) {
-    CHANNEL_PAGE = Math.max(MIN_PAGE, CHANNEL_PAGE - 1);
-    log(`[Track] Track Bank: page ${CHANNEL_PAGE}`);
-    notify(`Channel Page ← ${CHANNEL_PAGE + 1}`);
-    getLEDTracks();
-  } else if (cc === CC_SOLO[7]) {
-    CHANNEL_PAGE = Math.min(MAX_PAGE, CHANNEL_PAGE + 1);
-    log(`[Track] Track Bank: page ${CHANNEL_PAGE}`);
-    notify(`Channel Page → ${CHANNEL_PAGE + 1}`);
-    getLEDTracks();
   }
+  // else if (cc === CC_SOLO[6]) {
+  //   CHANNEL_PAGE = Math.max(MIN_PAGE, CHANNEL_PAGE - 1);
+  //   log(`[Track] Track Bank: page ${CHANNEL_PAGE}`);
+  //   notify(`Channel Page ← ${CHANNEL_PAGE + 1}`);
+  //   getLEDTracks();
+  // } else if (cc === CC_SOLO[7]) {
+  //   CHANNEL_PAGE = Math.min(MAX_PAGE, CHANNEL_PAGE + 1);
+  //   log(`[Track] Track Bank: page ${CHANNEL_PAGE}`);
+  //   notify(`Channel Page → ${CHANNEL_PAGE + 1}`);
+  //   getLEDTracks();
+  // }
 }
 
 /* ------------------ MODE 3: DEVICE -------------------- */
