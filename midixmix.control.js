@@ -75,12 +75,15 @@ const TRACKS = MAX_PAGE * NUM_FADERS;
 var SHIFT_PRESSED = false;
 var SHIFT_PRESS_TIME = 0;
 var SHIFT_ACTION_TAKEN = false;
-const SHIFT_SHORT_PRESS_MS = 300; // ms: shorter than this = short press
+const SHIFT_SHORT_PRESS_MS = 400; // ms: shorter than this = short press
 
 // 1 = Mixer Mode, 2 = Track Mode, 3 = Device Mode
 var PROGRAM_MODE = 1;
 
 let CHANNEL_PAGE = 0;
+
+var IS_TRANSPORT_PLAYING = false;
+var IS_ARRANGER_LOOP_ENABLED = false;
 
 /* ------------------------------------------------------ */
 /*                        HARDWARE                        */
@@ -187,9 +190,12 @@ function rawToDb(raw) {
 // Which SOLO indices are active buttons in each non-Mixer mode
 const TRACK_MODE_SOLO_ACTIVE   = [0, 1, 2, 3];
 const DEVICE_MODE_SOLO_ACTIVE  = [0, 1, 2, 3, 6, 7];
-const PROJECT_MODE_SOLO_ACTIVE = [0, 1, 2, 6, 7];
+const PROJECT_MODE_SOLO_ACTIVE = [0, 1, 2, 4, 6, 7];
 
 function updateProgramModeLEDs() {
+  // Show the colored scene bracket in the Bitwig UI only in Project Mode
+  trackBank.setShouldShowClipLauncherFeedback(PROGRAM_MODE === 4);
+
   switch (PROGRAM_MODE) {
     case 1: // Mixer: both bank LEDs off; restore SOLO row from cache
       midiOut.sendMidi(NOTE_ON, BANKL, OFF);
@@ -221,8 +227,11 @@ function updateProgramModeLEDs() {
       midiOut.sendMidi(NOTE_ON, BANKL, ON);
       midiOut.sendMidi(NOTE_ON, BANKR, ON);
       for (var i = 0; i < NUM_FADERS; i++) {
-        var isActive = PROJECT_MODE_SOLO_ACTIVE.includes(i);
-        midiOut.sendMidi(NOTE_ON, LED_SOLO[i], isActive ? ON : OFF);
+        // index 4 = loop toggle: reflect actual loop state instead of fixed ON
+        var ledState = i === 4
+          ? (IS_ARRANGER_LOOP_ENABLED ? ON : OFF)
+          : (PROJECT_MODE_SOLO_ACTIVE.includes(i) ? ON : OFF);
+        midiOut.sendMidi(NOTE_ON, LED_SOLO[i], ledState);
       }
       for (var i = 0; i < NUM_FADERS; i++) {
         // index 7 = stop all clips button — always lit; index 6 = unused — always off
@@ -294,10 +303,25 @@ function init() {
   cursorDevice = cursorTrack.createCursorDevice();
   remoteControls = cursorDevice.createCursorRemoteControlsPage(8);
 
-  // application + arranger for Project Mode
+  // application + arranger + transport for Project Mode
   application = host.createApplication();
   arranger = host.createArranger();
+  transport = host.createTransport();
   sceneBank = host.createSceneBank(NUM_SCENES);
+
+  // Track transport playing state and loop state for the stop button
+  transport.isPlaying().markInterested();
+  transport.isPlaying().addValueObserver(function(playing) {
+    IS_TRANSPORT_PLAYING = playing;
+  });
+  transport.isArrangerLoopEnabled().markInterested();
+  transport.isArrangerLoopEnabled().addValueObserver(function(loopEnabled) {
+    IS_ARRANGER_LOOP_ENABLED = loopEnabled;
+    if (PROGRAM_MODE === 4) {
+      midiOut.sendMidi(NOTE_ON, LED_SOLO[4], loopEnabled ? ON : OFF);
+    }
+  });
+  transport.getInPosition().markInterested();
 
   // Subscribe to scene existence to drive MUTE-row LEDs in Project Mode
   for (var si = 0; si < NUM_SCENES; si++) {
@@ -419,6 +443,7 @@ function handleChannelButtonPress(cc, value) {
       midiOut.sendMidi(NOTE_ON, BANKL, ON);
       if (PROGRAM_MODE === 4) {
         sceneBank.scrollBackwards();
+        trackBank.scrollScenesUp();
         log("[Project] Scene Bank: scroll up");
       } else if (SHIFT_PRESSED) {
         SHIFT_ACTION_TAKEN = true;
@@ -437,6 +462,7 @@ function handleChannelButtonPress(cc, value) {
       midiOut.sendMidi(NOTE_ON, BANKR, ON);
       if (PROGRAM_MODE === 4) {
         sceneBank.scrollForwards();
+        trackBank.scrollScenesDown();
         log("[Project] Scene Bank: scroll down");
       } else if (SHIFT_PRESSED) {
         SHIFT_ACTION_TAKEN = true;
@@ -558,10 +584,24 @@ function handleProjectMode(cc, value) {
       sceneBank.getScene(sceneIndex).launch();
       log(`[Project] Launch scene ${sceneIndex}`);
     } else if (sceneIndex === 7) {
-      for (var t = 0; t < TRACKS; t++) {
-        trackBank.getTrack(t).stop();
+      if (IS_TRANSPORT_PLAYING) {
+        for (var t = 0; t < TRACKS; t++) {
+          trackBank.getTrack(t).stop();
+        }
+        transport.stop();
+        log("[Project] Stop all clips + transport");
+      } else {
+        // Already stopped — jump playhead to start
+        if (IS_ARRANGER_LOOP_ENABLED) {
+          transport.setPosition(transport.getInPosition().get());
+          log("[Project] Jump to loop start");
+          notify("↩ Loop Start");
+        } else {
+          transport.setPosition(0);
+          log("[Project] Jump to project start");
+          notify("↩ Project Start");
+        }
       }
-      log("[Project] Stop all clips");
     }
     return;
   }
@@ -577,6 +617,9 @@ function handleProjectMode(cc, value) {
   } else if (cc === CC_SOLO[2]) {
     application.toggleNoteEditor();
     log("[Project] Toggle Edit view");
+  } else if (cc === CC_SOLO[4]) {
+    transport.isArrangerLoopEnabled().toggle();
+    log("[Project] Toggle arranger loop");
   } else if (cc === CC_SOLO[6]) {
     arranger.isClipLauncherVisible().toggle();
     log("[Project] Toggle Clip Launcher");
@@ -725,7 +768,7 @@ function handleDeviceEncoder(cc, value) {
 /*                   MIDI INPUT HANDLER                   */
 /* ------------------------------------------------------ */
 function onMidi(status, cc, value) {
-  log(`status: ${status}, cc: ${cc}, value: ${value}`);
+  // log(`status: ${status}, cc: ${cc}, value: ${value}`);
 
   switch (true) {
     case isNoteOn(status):
