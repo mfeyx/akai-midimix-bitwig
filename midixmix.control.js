@@ -69,6 +69,13 @@ const TRACKS = MAX_PAGE * NUM_FADERS;
 /*                         RUNNERS                        */
 /* ------------------------------------------------------ */
 var SHIFT_PRESSED = false;
+var SHIFT_PRESS_TIME = 0;
+var SHIFT_ACTION_TAKEN = false;
+const SHIFT_SHORT_PRESS_MS = 300; // ms: shorter than this = short press
+
+// 1 = Mixer Mode, 2 = Track Mode, 3 = Device Mode
+var PROGRAM_MODE = 1;
+
 let CHANNEL_PAGE = 0;
 
 /* ------------------------------------------------------ */
@@ -166,6 +173,26 @@ function rawToDb(raw) {
 }
 
 /* ------------------------------------------------------ */
+/*                    PROGRAM MODE LEDs                   */
+/* ------------------------------------------------------ */
+function updateProgramModeLEDs() {
+  switch (PROGRAM_MODE) {
+    case 1: // Mixer: both bank LEDs off
+      midiOut.sendMidi(NOTE_ON, BANKL, OFF);
+      midiOut.sendMidi(NOTE_ON, BANKR, OFF);
+      break;
+    case 2: // Track: BANKL on, BANKR off
+      midiOut.sendMidi(NOTE_ON, BANKL, ON);
+      midiOut.sendMidi(NOTE_ON, BANKR, OFF);
+      break;
+    case 3: // Device: BANKL off, BANKR on
+      midiOut.sendMidi(NOTE_ON, BANKL, OFF);
+      midiOut.sendMidi(NOTE_ON, BANKR, ON);
+      break;
+  }
+}
+
+/* ------------------------------------------------------ */
 /*                   STARTUP LED ANIMATION                */
 /* ------------------------------------------------------ */
 function ledStartupAnimation() {
@@ -200,6 +227,7 @@ function ledStartupAnimation() {
   var phase3 = phase2 + NUM_FADERS * STEP + STEP;
   host.scheduleTask(function () {
     getLEDTracks();
+    updateProgramModeLEDs();
   }, phase3);
 }
 
@@ -310,88 +338,139 @@ function exit() {
 /*                   MIDI STATUS HANDLER                  */
 /* ------------------------------------------------------ */
 
-/* ----------------------- BUTTONS ---------------------- */
+/* ------------- UNIVERSAL BUTTON DISPATCHER ------------ */
 function handleChannelButtonPress(cc, value) {
   try {
-    // log(`handleChannelButtonPress -> ${status} CH ${cc} : ${value}`);
-    switch (true) {
-      case cc === BANKL:
-        midiOut.sendMidi(NOTE_ON, BANKL, ON);
-        if (SHIFT_PRESSED) {
-          cursorDevice.selectPrevious();
-          log("SHIFT+BANK LEFT: previous device");
-        } else {
-          CHANNEL_PAGE = Math.max(MIN_PAGE, CHANNEL_PAGE - 1);
-          log(`BANK LEFT, Page: ${CHANNEL_PAGE}`);
-          notify(`Channel Page ← ${CHANNEL_PAGE + 1}`);
-          getLEDTracks();
-        }
-        break;
+    // SHIFT press — always handled regardless of mode
+    if (cc === SHIFT) {
+      SHIFT_PRESSED = true;
+      SHIFT_PRESS_TIME = Date.now();
+      SHIFT_ACTION_TAKEN = false;
+      log("SHIFT pressed");
+      for (let i = 0; i < NUM_FADERS; i++) {
+        getLED(MUTE, i);
+      }
+      return;
+    }
 
-      case cc === BANKR:
-        midiOut.sendMidi(NOTE_ON, BANKR, ON);
-        if (SHIFT_PRESSED) {
-          cursorDevice.selectNext();
-          log("SHIFT+BANK RIGHT: next device");
-        } else {
-          CHANNEL_PAGE = Math.min(MAX_PAGE, CHANNEL_PAGE + 1);
-          log(`BANK RIGHT, Page: ${CHANNEL_PAGE}`);
-          notify(`Channel Page → ${CHANNEL_PAGE + 1}`);
-          getLEDTracks();
-        }
-        break;
+    // BANKL / BANKR — always handled regardless of mode
+    if (cc === BANKL) {
+      midiOut.sendMidi(NOTE_ON, BANKL, ON);
+      if (SHIFT_PRESSED) {
+        SHIFT_ACTION_TAKEN = true;
+        cursorDevice.selectPrevious();
+        log("SHIFT+BANKL: previous device");
+      } else {
+        CHANNEL_PAGE = Math.max(MIN_PAGE, CHANNEL_PAGE - 1);
+        log(`BANKL, Page: ${CHANNEL_PAGE}`);
+        notify(`Channel Page ← ${CHANNEL_PAGE + 1}`);
+        getLEDTracks();
+      }
+      return;
+    }
 
-      case cc === SHIFT:
-        SHIFT_PRESSED = true;
-        log(`SHIFT pressed: ${SHIFT_PRESSED}`);
-        // Switch MUTE-row LEDs to show MUTE state
-        for (let i = 0; i < NUM_FADERS; i++) {
-          getLED(MUTE, i);
-        }
-        break;
+    if (cc === BANKR) {
+      midiOut.sendMidi(NOTE_ON, BANKR, ON);
+      if (SHIFT_PRESSED) {
+        SHIFT_ACTION_TAKEN = true;
+        cursorDevice.selectNext();
+        log("SHIFT+BANKR: next device");
+      } else {
+        CHANNEL_PAGE = Math.min(MAX_PAGE, CHANNEL_PAGE + 1);
+        log(`BANKR, Page: ${CHANNEL_PAGE}`);
+        notify(`Channel Page → ${CHANNEL_PAGE + 1}`);
+        getLEDTracks();
+      }
+      return;
+    }
 
-      case CC_SOLO.includes(cc):
-        if (!SHIFT_PRESSED) {
-          log("SOLO pressed");
-          handleButtonPress(cc, SOLO, value);
-        }
-        break;
-
-      case CC_MUTE.includes(cc):
-        if (SHIFT_PRESSED) {
-          log("SHIFT+MUTE -> MUTE pressed");
-          handleButtonPress(cc, MUTE, value);
-        } else {
-          log("ARM pressed");
-          var muteIndex = CC_MUTE.indexOf(cc);
-          handleButtonPress(CC_ARM[muteIndex], ARM, value);
-        }
-        break;
-
-      // USE THOSE CC MESSAGES FOR SPECFIC FUNCTIONS
-      case CC_ARM.includes(cc):
-        if (value === ON) {
-          if (cc === CC_ARM[0]) {
-            remoteControls.selectPreviousPage(false);
-            log("Device page: previous");
-          } else if (cc === CC_ARM[1]) {
-            remoteControls.selectNextPage(false);
-            log("Device page: next");
-          } else if (cc === CC_ARM[6]) {
-            cursorTrack.selectPrevious();
-            log("Track: previous");
-          } else if (cc === CC_ARM[7]) {
-            cursorTrack.selectNext();
-            log("Track: next");
-          }
-        }
-        break;
-
-      default:
-        break;
+    // Dispatch to the active mode handler
+    switch (PROGRAM_MODE) {
+      case 1: handleMixerMode(cc, value);  break;
+      case 2: handleTrackMode(cc, value);  break;
+      case 3: handleDeviceMode(cc, value); break;
     }
   } catch (error) {
     handleError(error);
+  }
+}
+
+/* ------------------- MODE 1: MIXER -------------------- */
+function handleMixerMode(cc, value) {
+  // SOLO row — toggle solo
+  if (CC_SOLO.includes(cc)) {
+    if (!SHIFT_PRESSED) {
+      log("[Mixer] SOLO pressed");
+      handleButtonPress(cc, SOLO, value);
+    }
+    return;
+  }
+
+  // MUTE row — ARM normally; SHIFT+MUTE = mute
+  if (CC_MUTE.includes(cc)) {
+    if (SHIFT_PRESSED) {
+      SHIFT_ACTION_TAKEN = true;
+      log("[Mixer] SHIFT+MUTE: toggle mute");
+      handleButtonPress(cc, MUTE, value);
+    } else {
+      log("[Mixer] ARM pressed");
+      var muteIndex = CC_MUTE.indexOf(cc);
+      handleButtonPress(CC_ARM[muteIndex], ARM, value);
+    }
+    return;
+  }
+
+  // ARM row — SHIFT+ARM = mute the channel; no other function in Mixer mode
+  if (CC_ARM.includes(cc) && value === ON) {
+    if (SHIFT_PRESSED) {
+      SHIFT_ACTION_TAKEN = true;
+      var armIndex = CC_ARM.indexOf(cc);
+      var cix = getChannelIndex(armIndex);
+      trackBank.getTrack(cix).mute().toggle();
+      log(`[Mixer] SHIFT+ARM[${armIndex}]: mute channel ${cix}`);
+    }
+  }
+}
+
+/* ------------------- MODE 2: TRACK -------------------- */
+function handleTrackMode(cc, value) {
+  if (!CC_SOLO.includes(cc) || value !== ON) return;
+
+  if (cc === CC_SOLO[0]) {
+    cursorTrack.selectPrevious();
+    log("[Track] Track: previous");
+  } else if (cc === CC_SOLO[1]) {
+    cursorTrack.selectNext();
+    log("[Track] Track: next");
+  } else if (cc === CC_SOLO[6]) {
+    CHANNEL_PAGE = Math.max(MIN_PAGE, CHANNEL_PAGE - 1);
+    log(`[Track] Track Bank: page ${CHANNEL_PAGE}`);
+    notify(`Channel Page ← ${CHANNEL_PAGE + 1}`);
+    getLEDTracks();
+  } else if (cc === CC_SOLO[7]) {
+    CHANNEL_PAGE = Math.min(MAX_PAGE, CHANNEL_PAGE + 1);
+    log(`[Track] Track Bank: page ${CHANNEL_PAGE}`);
+    notify(`Channel Page → ${CHANNEL_PAGE + 1}`);
+    getLEDTracks();
+  }
+}
+
+/* ------------------ MODE 3: DEVICE -------------------- */
+function handleDeviceMode(cc, value) {
+  if (!CC_SOLO.includes(cc) || value !== ON) return;
+
+  if (cc === CC_SOLO[0]) {
+    cursorDevice.selectPrevious();
+    log("[Device] Device: previous");
+  } else if (cc === CC_SOLO[1]) {
+    cursorDevice.selectNext();
+    log("[Device] Device: next");
+  } else if (cc === CC_SOLO[2]) {
+    remoteControls.selectPreviousPage(false);
+    log("[Device] Device page: previous");
+  } else if (cc === CC_SOLO[3]) {
+    remoteControls.selectNextPage(false);
+    log("[Device] Device page: next");
   }
 }
 
@@ -540,16 +619,28 @@ function onMidi(status, cc, value) {
 
     case isNoteOff(status):
       if (cc == SHIFT) {
+        var pressDuration = Date.now() - SHIFT_PRESS_TIME;
+        if (!SHIFT_ACTION_TAKEN && pressDuration < SHIFT_SHORT_PRESS_MS) {
+          // Short press: cycle to the next program mode (1 → 2 → 3 → 1)
+          PROGRAM_MODE = (PROGRAM_MODE % 3) + 1;
+          var modeNames = ['', 'Mixer', 'Track', 'Device'];
+          log(`Program Mode: ${PROGRAM_MODE} (${modeNames[PROGRAM_MODE]})`);
+          notify(`Mode: ${modeNames[PROGRAM_MODE]}`);
+        }
         SHIFT_PRESSED = false;
-        log(`SHIFT pressed: ${SHIFT_PRESSED}`);
+        log(`SHIFT released (held ${pressDuration}ms)`);
         // Switch MUTE-row LEDs back to ARM state
         for (let i = 0; i < NUM_FADERS; i++) {
           getLED(ARM, i);
         }
+        // Restore BANK LEDs to reflect current program mode
+        updateProgramModeLEDs();
       } else if (cc === BANKL) {
-        midiOut.sendMidi(NOTE_ON, BANKL, OFF);
+        // Keep BANKL LED on if in Track Mode (mode 2), else off
+        midiOut.sendMidi(NOTE_ON, BANKL, PROGRAM_MODE === 2 ? ON : OFF);
       } else if (cc === BANKR) {
-        midiOut.sendMidi(NOTE_ON, BANKR, OFF);
+        // Keep BANKR LED on if in Device Mode (mode 3), else off
+        midiOut.sendMidi(NOTE_ON, BANKR, PROGRAM_MODE === 3 ? ON : OFF);
       }
       break;
 
