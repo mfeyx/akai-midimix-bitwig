@@ -178,7 +178,7 @@ function rawToDb(raw) {
 
 // Which SOLO indices are active buttons in each non-Mixer mode
 const TRACK_MODE_SOLO_ACTIVE  = [0, 1, 2, 3];
-const DEVICE_MODE_SOLO_ACTIVE = [0, 1, 2, 3];
+const DEVICE_MODE_SOLO_ACTIVE = [0, 1, 2, 3, 6, 7];
 
 function updateProgramModeLEDs() {
   switch (PROGRAM_MODE) {
@@ -488,6 +488,12 @@ function handleDeviceMode(cc, value) {
   } else if (cc === CC_SOLO[3]) {
     remoteControls.selectNextPage(false);
     log("[Device] Device page: next");
+  } else if (cc === CC_SOLO[6]) {
+    cursorDevice.isExpanded().toggle();
+    log("[Device] Toggle device expanded");
+  } else if (cc === CC_SOLO[7]) {
+    cursorDevice.isRemoteControlsSectionVisible().toggle();
+    log("[Device] Toggle remote controls visibility");
   }
 }
 
