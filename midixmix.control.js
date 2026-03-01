@@ -15,6 +15,11 @@ host.defineMidiPorts(1, 1);
 /* ------------------------------------------------------ */
 var DEBUG = true;
 
+function midi(cc, on = true) {
+  var value = on ? ON : OFF
+  midiOut.sendMidi(NOTE_ON, cc, value);
+}
+
 /* ------------------------------------------------------ */
 /*                         LOGGING                        */
 /* ------------------------------------------------------ */
@@ -41,7 +46,8 @@ function notify(msg) {
 const ON = 127;
 const OFF = 0;
 
-const NOTE_ON = 144; // 0x90
+const NOTE_ON = 0x90; // 144
+const NOTE_OFF = 0x80;
 /* ------------------------------------------------------ */
 /*                          NAMES                         */
 /* ------------------------------------------------------ */
